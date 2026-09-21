@@ -42,3 +42,21 @@ if [ -x "$APP_BINARY" ]; then
 else
     echo "warning: NextGen application not staged (missing $APP_BINARY)" >&2
 fi
+
+
+# Development images deliberately keep a password login recovery path.
+# The defconfig sets the root password to "root"; current OpenSSH defaults
+# otherwise reject password authentication for root (PermitRootLogin
+# prohibit-password). Production images can disable this explicitly with
+# NEXTGEN_DEV_SSH_PASSWORD_LOGIN=0.
+if [ "${NEXTGEN_DEV_SSH_PASSWORD_LOGIN:-1}" = "1" ] && [ -f "$TARGET_DIR/etc/ssh/sshd_config" ]; then
+    sed -i \
+        -e 's/^[#[:space:]]*PermitRootLogin[[:space:]].*/PermitRootLogin yes/' \
+        -e 's/^[#[:space:]]*PasswordAuthentication[[:space:]].*/PasswordAuthentication yes/' \
+        "$TARGET_DIR/etc/ssh/sshd_config"
+
+    grep -q '^PermitRootLogin[[:space:]]\+yes$' "$TARGET_DIR/etc/ssh/sshd_config" || \
+        printf '\nPermitRootLogin yes\n' >> "$TARGET_DIR/etc/ssh/sshd_config"
+    grep -q '^PasswordAuthentication[[:space:]]\+yes$' "$TARGET_DIR/etc/ssh/sshd_config" || \
+        printf 'PasswordAuthentication yes\n' >> "$TARGET_DIR/etc/ssh/sshd_config"
+fi
