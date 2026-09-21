@@ -10,6 +10,13 @@ EXEC_DIR="$TARGET_DIR/root/Exec"
 COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
 mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" "$EXEC_DIR"
 
+# NextGen owns when NTP synchronisation is allowed (manual "Sync now" and the
+# Auto Time Sync setting). Keep chronyd/chronyc installed, but do not start the
+# package's background daemon unconditionally: it would both ignore the user
+# setting and make the application's one-shot 'chronyd -q' fail immediately
+# because another chronyd instance already owns the runtime PID/socket.
+rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
+
 for name in Arial.ttf NotoSansCJKtc-Regular.ttf Translations.csv ionicons.ttf open-iconic.ttf; do
     [ ! -e "$COMMON_RUNTIME/$name" ] || cp -L "$COMMON_RUNTIME/$name" "$EXEC_DIR/$name"
 done
