@@ -42,7 +42,12 @@ fi
 SECTOR_SIZE="$(blockdev --getss "$DEVICE")"
 DISK_BYTES="$(blockdev --getsize64 "$DEVICE")"
 BOOT_BYTES="$(stat -c %s "$BOOT_IMAGE")"
-ROOT_BYTES="$(stat -c %s "$ROOT_IMAGE")"
+ROOT_BYTES="$(stat -Lc %s "$ROOT_IMAGE")"
+MIN_ROOT_BYTES=$((16 * 1024 * 1024))
+[ "$ROOT_BYTES" -ge "$MIN_ROOT_BYTES" ] || {
+    echo "error: rootfs image is unexpectedly small ($ROOT_BYTES bytes): $ROOT_IMAGE" >&2
+    exit 1
+}
 
 ALIGN_BYTES=$((1024 * 1024))
 P1_START=$(((ALIGN_BYTES + SECTOR_SIZE - 1) / SECTOR_SIZE))
