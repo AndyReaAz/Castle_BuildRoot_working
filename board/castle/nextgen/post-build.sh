@@ -17,6 +17,12 @@ mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" "$EXEC_DIR"
 # because another chronyd instance already owns the runtime PID/socket.
 rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
 
+# NetworkManager always maintains its generated resolver state here.  The
+# Buildroot skeleton points /etc/resolv.conf at /run/resolv.conf, but with
+# NetworkManager that target is never created, leaving DNS completely broken.
+# Point libc directly at NetworkManager's canonical runtime resolver file.
+ln -snf ../run/NetworkManager/resolv.conf "$TARGET_DIR/etc/resolv.conf"
+
 for name in Arial.ttf NotoSansCJKtc-Regular.ttf Translations.csv ionicons.ttf open-iconic.ttf; do
     [ ! -e "$COMMON_RUNTIME/$name" ] || cp -L "$COMMON_RUNTIME/$name" "$EXEC_DIR/$name"
 done
