@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# Start the NextGen application watchdog as the first rcS service.  The
+# application takes ownership of the framebuffer as soon as /dev/fb0 exists
+# and then waits internally for later boot prerequisites.
+#
+exec /etc/init.d/S55NextGen "$@"
