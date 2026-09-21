@@ -70,6 +70,18 @@ for file in boot.bin u-boot.bin uboot.env zImage nextgen.dtb; do
     "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$BINARIES_DIR/$file" "::/$file"
 done
 
+# Transitional complete SD-boot image:
+# p1 FAT boot, p2 ext4 rootfs, p3 ext4 meter data.
+# The application requires the legacy data partition to be larger than 4 GiB.
+DATA_IMAGE="$BINARIES_DIR/data.ext4"
+DATA_IMAGE_SIZE="${NEXTGEN_DATA_IMAGE_SIZE:-5G}"
+
+rm -f "$DATA_IMAGE" "$BINARIES_DIR/sdcard.img"
+truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
+"$HOST_DIR/sbin/mkfs.ext4" -F -L data -m 0 "$DATA_IMAGE" >/dev/null
+
+"$BUILDROOT_DIR/support/scripts/genimage.sh" -c "$SCRIPT_DIR/genimage.cfg"
+
 (
     cd "$BINARIES_DIR"
     sha256sum boot.bin u-boot.bin uboot.env zImage nextgen.dtb rootfs.ext4         > nextgen-image-manifest.sha256
@@ -78,4 +90,5 @@ done
 install -m 0755 "$SCRIPT_DIR/write-sd-card.sh" "$BINARIES_DIR/write-sd-card.sh"
 
 echo "NextGen boot FAT image: $BOOT_IMAGE"
+echo "NextGen full SD image:  $BINARIES_DIR/sdcard.img"
 echo "NextGen SD writer:      $BINARIES_DIR/write-sd-card.sh"
