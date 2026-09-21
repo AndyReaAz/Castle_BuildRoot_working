@@ -61,14 +61,37 @@ printf 'NextGen boot: %-12s <- %s\n' "uboot.env" "$UBOOT_ENV_SOURCE"
 
 BOOT_IMAGE="$BINARIES_DIR/boot.vfat"
 BOOT_SIZE_MIB="${NEXTGEN_BOOT_SIZE_MIB:-16}"
+INITRAMFS_IMAGE="$BINARIES_DIR/psplash-initramfs.cpio.gz"
+
+echo "Building NextGen psplash initramfs against $TARGET_DIR"
+bash "$APP_DIR/scripts/build_psplash_initramfs.sh" \
+    --target-dir "$TARGET_DIR" \
+    --root-device /dev/mmcblk0p2 \
+    --root-fstype ext4 \
+    --root-options ro \
+    --gzip-only
+
+install -m 0644 "$APP_DIR/InitRamFs/psplash-initramfs.cpio.gz" "$INITRAMFS_IMAGE"
 
 rm -f "$BOOT_IMAGE"
 truncate -s "${BOOT_SIZE_MIB}M" "$BOOT_IMAGE"
 "$HOST_DIR/sbin/mkfs.vfat" -n NEXTGEN "$BOOT_IMAGE" >/dev/null
 
-for file in boot.bin u-boot.bin uboot.env zImage nextgen.dtb; do
+for file in boot.bin u-boot.bin uboot.env zImage nextgen.dtb psplash-initramfs.cpio.gz; do
     "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$BINARIES_DIR/$file" "::/$file"
 done
+
+BOOT_LOGO_COUNT=0
+for logo in "$APP_DIR"/UbootLogos/*.bmp; do
+    [ -f "$logo" ] || continue
+    "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$logo" "::/$(basename "$logo")"
+    BOOT_LOGO_COUNT=$((BOOT_LOGO_COUNT + 1))
+done
+
+[ "$BOOT_LOGO_COUNT" -gt 0 ] || {
+    echo "error: no U-Boot logos found under $APP_DIR/UbootLogos" >&2
+    exit 1
+}
 
 # Transitional complete SD-boot image:
 # p1 FAT boot, p2 ext4 rootfs, p3 ext4 meter data.
@@ -84,7 +107,8 @@ truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
 
 (
     cd "$BINARIES_DIR"
-    sha256sum boot.bin u-boot.bin uboot.env zImage nextgen.dtb rootfs.ext4         > nextgen-image-manifest.sha256
+    sha256sum boot.bin u-boot.bin uboot.env zImage nextgen.dtb \
+        psplash-initramfs.cpio.gz rootfs.ext4 > nextgen-image-manifest.sha256
 )
 
 install -m 0755 "$SCRIPT_DIR/write-sd-card.sh" "$BINARIES_DIR/write-sd-card.sh"
