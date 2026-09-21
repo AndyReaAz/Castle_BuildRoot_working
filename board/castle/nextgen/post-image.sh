@@ -27,7 +27,20 @@ stage_required()
     return 1
 }
 
-stage_required "$BINARIES_DIR/boot.bin"     "${NEXTGEN_AT91BOOTSTRAP:-}"     "$WORKSPACE_DIR/at91bootstrap/build/binaries/boot.bin"     "$WORKSPACE_DIR/at91bootstrap/build/binaries/at91bootstrap.bin"     "$WORKSPACE_DIR/at91bootstrap/binaries/boot.bin"     "$WORKSPACE_DIR/at91bootstrap/binaries/at91bootstrap.bin"
+SD_BOOTSTRAP="${NEXTGEN_AT91BOOTSTRAP:-}"
+if [ -z "$SD_BOOTSTRAP" ]; then
+    for candidate in "$WORKSPACE_DIR"/at91bootstrap/build/binaries/sama5d2-sdcardboot-uboot-*.bin; do
+        [ -f "$candidate" ] || continue
+        SD_BOOTSTRAP="$candidate"
+    done
+fi
+
+[ -n "$SD_BOOTSTRAP" ] || {
+    echo "error: no SD-card AT91Bootstrap image found; build the sdcardboot configuration or set NEXTGEN_AT91BOOTSTRAP" >&2
+    exit 1
+}
+
+stage_required "$BINARIES_DIR/boot.bin" "$SD_BOOTSTRAP"
 
 stage_required "$BINARIES_DIR/u-boot.bin"     "${NEXTGEN_UBOOT_IMAGE:-}"     "$WORKSPACE_DIR/u-boot/u-boot.bin"
 
