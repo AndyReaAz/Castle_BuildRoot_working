@@ -9,6 +9,8 @@ SETTINGS0=/root/Exec/SettingsJSON0.dat
 SETTINGS1=/root/Exec/SettingsJSON1.dat
 SETTINGS_JSON=/run/usb-gadget-settings.json
 USB_COMMON=/root/Exec/usb-gadget-common.sh
+USB_CONTROL=/root/Exec/usbcontrol.sh
+ENGMODE_FILE=/root/Exec/engmode
 
 if [ ! -r "$USB_COMMON" ]; then
     echo "Missing USB helper: $USB_COMMON"
@@ -221,9 +223,15 @@ start_gadget()
     mkdir -p "$MTP_ROOT"
 
     #
-    # Leave USB disabled.
-    # usbcontrol.sh selects the required mask.
+    # Leave USB disabled in normal production boot.  On engineering builds,
+    # however, bring NCM up from init rather than relying on the application.
+    # This preserves an SSH recovery path even if an early-start application
+    # is waiting for some later kernel/device dependency.
     #
+    if [ -f "$ENGMODE_FILE" ] && [ -x "$USB_CONTROL" ]; then
+        echo "Engineering recovery NCM: enabling usb0"
+        "$USB_CONTROL" mask 2 || echo "Failed to enable engineering recovery NCM"
+    fi
 }
 
 stop_gadget()
