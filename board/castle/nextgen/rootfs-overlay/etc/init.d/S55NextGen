@@ -8,6 +8,13 @@ STOPFILE="/run/nextgen.stop"
 
 start()
 {
+    case " $(cat /proc/cmdline 2>/dev/null) " in
+        *" startnextgen=false "*)
+            echo "NextGen startup disabled"
+            return 0
+            ;;
+    esac
+
     if [ -f "$WATCHDOG_PIDFILE" ]; then
         PID=$(cat "$WATCHDOG_PIDFILE")
         if [ -d "/proc/$PID" ]; then
