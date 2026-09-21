@@ -1,0 +1,7 @@
+# NextGen network ownership
+#
+# NetworkManager is the sole owner of wlan0.
+# usb0 is created and configured by /root/Exec/usbcontrol.sh when NCM is enabled.
+
+auto lo
+iface lo inet loopback

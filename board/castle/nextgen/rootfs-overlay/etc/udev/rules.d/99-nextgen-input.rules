@@ -1,0 +1,31 @@
+# NextGen stable input-device names
+#
+# Install as:
+#   /etc/udev/rules.d/99-nextgen-input.rules
+#
+# Resulting device links:
+#   /dev/input/keypad
+#   /dev/input/touchscreen
+#
+# Reload without reboot:
+#   udevadm control --reload-rules
+#   udevadm trigger --subsystem-match=input
+#
+# Verify:
+#   ls -l /dev/input/keypad /dev/input/touchscreen
+
+# GPIO keypad
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEY}=="1", ATTRS{name}=="gpio-keys", SYMLINK+="input/keypad"
+
+# Goodix touchscreen
+#
+# The input_id udev builtin normally sets ID_INPUT_TOUCHSCREEN=1 for the GT911,
+# avoiding dependence on the assigned event number.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", SYMLINK+="input/touchscreen"
+
+# Name-based fallback, only needed if ID_INPUT_TOUCHSCREEN is not populated.
+# Check the exact reported name with:
+#   cat /sys/class/input/event1/device/name
+#
+# Uncomment and adjust the name if required:
+# SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Goodix Capacitive TouchScreen", SYMLINK+="input/touchscreen"

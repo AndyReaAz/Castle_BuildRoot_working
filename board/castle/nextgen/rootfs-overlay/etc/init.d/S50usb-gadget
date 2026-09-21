@@ -1,0 +1,262 @@
+#!/bin/sh
+
+G=/sys/kernel/config/usb_gadget/g1
+CFG="$G/configs/c.1"
+FFS=/dev/ffs-mtp
+MTP_ROOT=/sdcard/public
+
+SETTINGS0=/root/Exec/SettingsJSON0.dat
+SETTINGS1=/root/Exec/SettingsJSON1.dat
+SETTINGS_JSON=/run/usb-gadget-settings.json
+USB_COMMON=/root/Exec/usb-gadget-common.sh
+
+if [ ! -r "$USB_COMMON" ]; then
+    echo "Missing USB helper: $USB_COMMON"
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+. "$USB_COMMON"
+
+settings_count()
+{
+    file="$1"
+
+    [ -f "$file" ] || return 1
+    [ "$(wc -c < "$file" 2>/dev/null)" -ge 5 ] || return 1
+
+    count="$(od -An -N4 -tu4 "$file" 2>/dev/null | tr -d '[:space:]')"
+
+    case "$count" in
+        ''|*[!0-9]*)
+            return 1
+            ;;
+    esac
+
+    printf '%s\n' "$count"
+}
+
+settings_valid()
+{
+    file="$1"
+
+    [ -f "$file" ] || return 1
+    [ "$(wc -c < "$file" 2>/dev/null)" -ge 5 ] || return 1
+
+    tail -c +5 "$file" 2>/dev/null | jq -e . >/dev/null 2>&1
+}
+
+select_settings_file()
+{
+    best_file=""
+    best_count=""
+
+    for file in "$SETTINGS0" "$SETTINGS1"; do
+        settings_valid "$file" || continue
+
+        count="$(settings_count "$file")" || continue
+
+        if [ -z "$best_file" ] || [ "$count" -gt "$best_count" ]; then
+            best_file="$file"
+            best_count="$count"
+        fi
+    done
+
+    [ -n "$best_file" ] || return 1
+
+    printf '%s\n' "$best_file"
+}
+
+load_settings()
+{
+    settings_file="$(select_settings_file)" || return 1
+
+    tail -c +5 "$settings_file" > "$SETTINGS_JSON" || return 1
+    jq -e . "$SETTINGS_JSON" >/dev/null 2>&1 || return 1
+
+    return 0
+}
+
+start_gadget()
+{
+    mountpoint -q /sys/kernel/config || \
+        mount -t configfs none /sys/kernel/config
+
+    mkdir -p "$G"
+    cd "$G" || exit 1
+
+    #
+    # Disable any existing gadget.
+    #
+    echo "" > UDC 2>/dev/null || true
+
+    #
+    # Stop MTP.
+    #
+    killall umtprd 2>/dev/null || true
+    sleep 1
+
+    #
+    # Remove existing links.
+    #
+    rm -f "$CFG/acm.usb0" 2>/dev/null || true
+    rm -f "$CFG/acm.usb1" 2>/dev/null || true
+    rm -f "$CFG/eem.usb0" 2>/dev/null || true
+    rm -f "$CFG/ncm.usb0" 2>/dev/null || true
+    rm -f "$CFG/ffs.mtp" 2>/dev/null || true
+
+    #
+    # Unmount FunctionFS.
+    #
+    umount "$FFS" 2>/dev/null || true
+
+    #
+    # Device descriptors.
+    #
+    echo 0x1d6b > idVendor
+    echo 0x0104 > idProduct
+    echo 0x0200 > bcdUSB
+    echo 0x0100 > bcdDevice
+
+    #
+    # Composite device.
+    #
+    echo 0xEF > bDeviceClass
+    echo 0x02 > bDeviceSubClass
+    echo 0x01 > bDeviceProtocol
+
+    mkdir -p strings/0x409
+    mkdir -p "$CFG"
+    mkdir -p "$CFG/strings/0x409"
+
+    if load_settings; then
+        SERIALNUMBER="$(jq -r '.SerialNumber // 0 | tonumber' "$SETTINGS_JSON" 2>/dev/null || echo 0)"
+        MANUFACTURER="$(jq -r '.Manufacturer // 0 | tonumber' "$SETTINGS_JSON" 2>/dev/null || echo 0)"
+        MODELTYPE="$(jq -r '.ModelType // 0 | tonumber' "$SETTINGS_JSON" 2>/dev/null || echo 0)"
+    else
+        SERIALNUMBER=0
+        MANUFACTURER=0
+        MODELTYPE=0
+    fi
+
+    printf "%06d\n" "$SERIALNUMBER" > strings/0x409/serialnumber
+
+    case "$MANUFACTURER" in
+        2)
+            echo "SKC"
+            ;;
+        *)
+            echo "Castle Group"
+            ;;
+    esac > strings/0x409/manufacturer
+
+    if [ "$MANUFACTURER" -eq 2 ]; then
+        #
+        # SKC branding.
+        #
+        case "$MODELTYPE" in
+            3)
+                echo "SoundCHEK PRO"
+                ;;
+            *)
+                echo "SoundCHEK"
+                ;;
+        esac
+    else
+        #
+        # Castle branding.
+        #
+        case "$MODELTYPE" in
+            1)
+                echo "dBAir"
+                ;;
+            2)
+                echo "dBAngel"
+                ;;
+            3)
+                echo "dBAir Pro"
+                ;;
+            *)
+                echo "Sonik Meter"
+                ;;
+        esac
+    fi > strings/0x409/product
+
+    echo "CDC + NCM + MTP" > "$CFG/strings/0x409/configuration"
+    echo 250 > "$CFG/MaxPower"
+
+    # Generate uMTP-Responder configuration from exactly the same identity.
+    # Runtime state lives under /run; this also repairs older regular /etc configs.
+    usb_mtp_write_config || {
+        echo "Failed to generate MTP configuration"
+        return 1
+    }
+
+    #
+    # Create functions once.
+    #
+    [ -d functions/acm.usb0 ] || mkdir functions/acm.usb0
+
+    if [ ! -d functions/ncm.usb0 ]; then
+        mkdir functions/ncm.usb0
+
+        #
+        # Placeholder MACs.
+        # usbcontrol.sh overwrites these before enabling NCM.
+        #
+        echo "02:12:34:56:78:9a" > functions/ncm.usb0/dev_addr
+        echo "06:12:34:56:78:9b" > functions/ncm.usb0/host_addr
+    fi
+
+    [ -d functions/ffs.mtp ] || mkdir functions/ffs.mtp
+
+    #
+    # Prepare FunctionFS.
+    #
+    mkdir -p "$FFS"
+
+    mountpoint -q "$FFS" || \
+        mount -t functionfs mtp "$FFS"
+
+    mkdir -p "$MTP_ROOT"
+
+    #
+    # Leave USB disabled.
+    # usbcontrol.sh selects the required mask.
+    #
+}
+
+stop_gadget()
+{
+    ifconfig usb0 down 2>/dev/null || true
+
+    echo "" > "$G/UDC" 2>/dev/null || true
+
+    killall umtprd 2>/dev/null || true
+
+    umount "$FFS" 2>/dev/null || true
+
+    rm -f "$SETTINGS_JSON"
+
+    echo "USB gadget stopped"
+}
+
+case "$1" in
+    start)
+        start_gadget
+        ;;
+    stop)
+        stop_gadget
+        ;;
+    restart)
+        stop_gadget
+        sleep 1
+        start_gadget
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0
