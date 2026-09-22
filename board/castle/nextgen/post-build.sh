@@ -40,6 +40,20 @@ if [ -d "$KERNEL_MODULES_ROOT" ]; then
         "$TARGET_DIR/lib/modules/$KERNEL_RELEASE/build" \
         "$TARGET_DIR/lib/modules/$KERNEL_RELEASE/source"
 
+    # The module tree comes from the external fast-boot kernel build rather
+    # than Buildroot's own linux package, so regenerate target-side dependency
+    # metadata after copying it. This is required for deterministic modprobe
+    # of deferred drivers such as WILC and their dependencies.
+    DEPMOD="${HOST_DIR:-}/sbin/depmod"
+    if [ ! -x "$DEPMOD" ]; then
+        DEPMOD="${HOST_DIR:-}/bin/depmod"
+    fi
+    [ -x "$DEPMOD" ] || {
+        echo "error: Buildroot host depmod is unavailable (HOST_DIR=${HOST_DIR:-unset})" >&2
+        exit 1
+    }
+    "$DEPMOD" -b "$TARGET_DIR" "$KERNEL_RELEASE"
+
     printf 'NextGen kernel modules: %s <- %s\n' \
         "$KERNEL_RELEASE" "$KERNEL_BUILD_DIR"
 else
