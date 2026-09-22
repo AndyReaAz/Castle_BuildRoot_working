@@ -79,6 +79,16 @@ install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/Exec/fwenv.sh" \
 # because another chronyd instance already owns the runtime PID/socket.
 rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
 
+# eudev remains the long-running hotplug manager, but its stock SysV script
+# performs a complete coldplug trigger + settle immediately after S00NextGen.
+# Critical NextGen devices are built in and available through devtmpfs; the
+# application resolves the Goodix evdev node directly before udev exists.
+# Keep udev installed, but let the application start the coldplug later.
+if [ -f "$TARGET_DIR/etc/init.d/S10udevd" ]; then
+    mv "$TARGET_DIR/etc/init.d/S10udevd" \
+        "$TARGET_DIR/etc/init.d/udevd"
+fi
+
 # NetworkManager and its D-Bus dependency are needed by the application, but
 # neither belongs in the boot-critical path.  Remove the SysV S-prefixes so
 # rcS does not launch them; WiFiRun() starts D-Bus immediately before
