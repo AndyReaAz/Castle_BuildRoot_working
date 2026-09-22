@@ -11,6 +11,10 @@
 CONFIG_MACB
 # SAMA5D2 GMAC / wired Ethernet. NextGen does not plan to use wired Ethernet.
 
+CONFIG_KXCJK1013
+# Kionix KXCJK/KXTJ-family accelerometer driver. Not required by the current
+# partial board; keep disabled until NEXTGEN_FULL_BUILD sensor hardware needs it.
+
 CONFIG_APDS9306
 # APDS9306 ambient-light sensor. Full-build-board sensor only; leave out while
 # its DTS node is hidden by NEXTGEN_FULL_BUILD.
@@ -26,6 +30,5 @@ CONFIG_SENSORS_SHT4x
 # CONFIG_IIO_ST_PRESS_I2C
 #   LPS22HB pressure/temperature sensor remains fitted for current development.
 #
-# KXTJ3 is accessed directly by the application over /dev/i2c-1.  Upstream
-# KXCJK1013 does not list KXTJ3 support, so no Kionix kernel-driver symbol is
-# recorded here unless the NextGen kernel has a separate/custom KXTJ3 driver.
+# The application currently talks to its accelerometer path directly over
+# /dev/i2c-1; keep the generic Kionix kernel driver out of the lean build.
