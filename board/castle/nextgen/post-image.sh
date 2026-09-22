@@ -29,10 +29,15 @@ stage_required()
 
 SD_BOOTSTRAP="${NEXTGEN_AT91BOOTSTRAP:-}"
 if [ -z "$SD_BOOTSTRAP" ]; then
-    for candidate in "$WORKSPACE_DIR"/at91bootstrap/build/binaries/sama5d2-sdcardboot-uboot-*.bin; do
-        [ -f "$candidate" ] || continue
-        SD_BOOTSTRAP="$candidate"
-    done
+    if [ -f "$WORKSPACE_DIR/at91bootstrap/build-sd/binaries/boot.bin" ]; then
+        SD_BOOTSTRAP="$WORKSPACE_DIR/at91bootstrap/build-sd/binaries/boot.bin"
+    else
+        # Migration fallback for the pre-wrapper bootstrap build layout.
+        for candidate in "$WORKSPACE_DIR"/at91bootstrap/build/binaries/sama5d2-sdcardboot-uboot-*.bin; do
+            [ -f "$candidate" ] || continue
+            SD_BOOTSTRAP="$candidate"
+        done
+    fi
 fi
 
 [ -n "$SD_BOOTSTRAP" ] || {
@@ -52,6 +57,20 @@ stage_required "$BINARIES_DIR/nextgen.dtb" \
     "${NEXTGEN_DTB_IMAGE:-}" \
     "$KERNEL_BUILD_DIR/arch/arm/boot/dts/microchip/nextgen.dtb" \
     "$KERNEL_BUILD_DIR/arch/arm/boot/dts/nextgen.dtb"
+
+# Ratified 2 MiB NOR layout reserves 32 KiB for AT91Bootstrap and
+# 0x138000 bytes for U-Boot. Refuse to package an image that would overlap
+# the redundant environment slots at 0x140000 and 0x150000.
+BOOTSTRAP_BYTES="$(wc -c < "$BINARIES_DIR/boot.bin")"
+UBOOT_BYTES="$(wc -c < "$BINARIES_DIR/u-boot.bin")"
+[ "$BOOTSTRAP_BYTES" -le $((0x8000)) ] || {
+    echo "error: boot.bin is too large for NOR bootstrap partition: $BOOTSTRAP_BYTES > 32768" >&2
+    exit 1
+}
+[ "$UBOOT_BYTES" -le $((0x138000)) ] || {
+    echo "error: u-boot.bin is too large for NOR U-Boot partition: $UBOOT_BYTES > $((0x138000))" >&2
+    exit 1
+}
 
 UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
 UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
@@ -83,6 +102,22 @@ else
         echo "       profile ${NEXTGEN_KERNEL_PROFILE:-baseline} expects bootdelay=${EXPECTED_BOOTDELAY}" >&2
         exit 1
     }
+    grep -q '^manufacturer=' "$UBOOT_ENV_TEXT" ||
+        { echo "error: U-Boot environment has no manufacturer identity" >&2; exit 1; }
+    grep -q '^modeltype=' "$UBOOT_ENV_TEXT" ||
+        { echo "error: U-Boot environment has no modeltype identity" >&2; exit 1; }
+    grep -q '^model=' "$UBOOT_ENV_TEXT" ||
+        { echo "error: U-Boot environment has no model identity" >&2; exit 1; }
+    grep -q 'nextgen.manufacturer=${manufacturer}' "$UBOOT_ENV_TEXT" ||
+        { echo "error: bootargs do not pass manufacturer identity" >&2; exit 1; }
+    grep -q 'nextgen.modeltype=${modeltype}' "$UBOOT_ENV_TEXT" ||
+        { echo "error: bootargs do not pass modeltype identity" >&2; exit 1; }
+    grep -q 'nextgen.model=${model}' "$UBOOT_ENV_TEXT" ||
+        { echo "error: bootargs do not pass model identity" >&2; exit 1; }
+    if grep -q '^product=' "$UBOOT_ENV_TEXT" || grep -q 'nextgen.product=' "$UBOOT_ENV_TEXT"; then
+        echo "error: obsolete splash/theme product state remains in U-Boot environment" >&2
+        exit 1
+    fi
     [ -x "$MKENVIMAGE" ] || {
         echo "error: mkenvimage is not available: $MKENVIMAGE" >&2
         echo "       rebuild U-Boot fast profile or set NEXTGEN_MKENVIMAGE" >&2
