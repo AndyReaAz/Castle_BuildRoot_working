@@ -12,7 +12,7 @@ The matching development branches are:
 
 - U-Boot: `chatgpt/fast-boot`
 - Buildroot: `chatgpt/fast-boot`
-- Kernel: fast-boot work belongs in the separate `linux-at91` repository
+- Kernel: `../linux-working`, branch `chatgpt/fast-boot`
 - Application: current boot-split work
 
 The fast-boot baseline is intentionally simple:
@@ -23,13 +23,20 @@ The fast-boot baseline is intentionally simple:
   at image-build time so there is no first-boot `saveenv`.
 - Linux fast-boot configuration is owned by the kernel repository.
 - Linux owns display initialisation; the early application owns the splash.
-- ADC/audio/display/touch/WILC support is left intact.
+- The baseline keeps ADC/audio/display/touch/WILC built-in exactly as the known-good `workingconfig`.
+- A separate deferred-module profile moves only non-boot-critical drivers out of the kernel for measured comparison.
 
-Build the kernel in the separate `linux-at91` repository and build U-Boot into
-`../u-boot/build-fast` from its `chatgpt/fast-boot` branch. Then build this
-Buildroot branch normally. The post-image step packages the already-built
-kernel, DTB, U-Boot and AT91Bootstrap artifacts and generates `uboot.env` from
-the matching U-Boot text environment.
+Build the kernel in `../linux-working` and build U-Boot into
+`../u-boot/build-fast` from its `chatgpt/fast-boot` branch.
+
+The kernel has two deliberately separate outputs:
+
+- `../linux-working/build-fast`: LZ4 control kernel; known-good hardware config.
+- `../linux-working/build-fast-deferred`: stage-2 kernel with selected
+  non-boot-critical drivers moved to modules.
+
+Buildroot packages exactly the directory selected by `NEXTGEN_KERNEL_BUILD_DIR`.
+It does not fall back to stale artifacts from the old `linux-at91` checkout.
 
 The resulting deployment artifacts are:
 
@@ -46,8 +53,6 @@ The normal ChatGPT-accessible kernel checkout is expected at
 `.git/nextgen-batch-push/` repositories are only import/relay machinery and
 must not be treated as production build locations.
 
-`post-build.sh` installs the complete module tree from
-`../linux-working/build-fast/mods/lib/modules/<release>` into the target
-rootfs, while `post-image.sh` stages `zImage` and `nextgen.dtb` from the
-same build directory. Set `NEXTGEN_KERNEL_BUILD_DIR` only when intentionally
-packaging a different kernel build.
+`post-build.sh` installs a complete module tree from the selected kernel build when one exists; the monolithic control kernel legitimately has none. `post-image.sh` stages `zImage` and `nextgen.dtb` from that same selected build directory.
+
+For the control image, leave `NEXTGEN_KERNEL_BUILD_DIR` unset. For the deferred-module image, set it to `../linux-working/build-fast-deferred`.
