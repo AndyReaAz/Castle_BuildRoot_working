@@ -55,7 +55,7 @@ stage_required "$BINARIES_DIR/nextgen.dtb" \
 
 UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
 UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
-MKENVIMAGE="${NEXTGEN_MKENVIMAGE:-$WORKSPACE_DIR/u-boot/tools/mkenvimage}"
+MKENVIMAGE="${NEXTGEN_MKENVIMAGE:-$WORKSPACE_DIR/u-boot/build-fast/tools/mkenvimage}"
 
 rm -f "$BINARIES_DIR/uboot.env"
 if [ -n "$UBOOT_ENV_SOURCE" ]; then
@@ -76,7 +76,7 @@ else
     }
     [ -x "$MKENVIMAGE" ] || {
         echo "error: mkenvimage is not available: $MKENVIMAGE" >&2
-        echo "       build U-Boot first or set NEXTGEN_MKENVIMAGE" >&2
+        echo "       rebuild U-Boot fast profile or set NEXTGEN_MKENVIMAGE" >&2
         exit 1
     }
     "$MKENVIMAGE" -s 0x4000 -o "$BINARIES_DIR/uboot.env" "$UBOOT_ENV_TEXT"
