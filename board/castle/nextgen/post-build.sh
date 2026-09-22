@@ -77,13 +77,33 @@ install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/startup.sh" \
 # because another chronyd instance already owns the runtime PID/socket.
 rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
 
-# NetworkManager is needed by the application, but it is intentionally kept
-# out of the boot critical path.  Remove the SysV S-prefix so rcS does not
-# launch it; WiFiRun() starts this script at the application's existing
-# delayed Wi-Fi stage.
+# NetworkManager and its D-Bus dependency are needed by the application, but
+# neither belongs in the boot-critical path.  Remove the SysV S-prefixes so
+# rcS does not launch them; WiFiRun() starts D-Bus immediately before
+# NetworkManager at the application's delayed Wi-Fi stage.
+if [ -f "$TARGET_DIR/etc/init.d/S30dbus-daemon" ]; then
+    mv "$TARGET_DIR/etc/init.d/S30dbus-daemon" \
+        "$TARGET_DIR/etc/init.d/dbus-daemon"
+fi
 if [ -f "$TARGET_DIR/etc/init.d/S45NetworkManager" ]; then
     mv "$TARGET_DIR/etc/init.d/S45NetworkManager" \
         "$TARGET_DIR/etc/init.d/NetworkManager"
+fi
+
+# dnsmasq is only used by the engineering USB NCM path. usbcontrol.sh starts
+# an isolated instance with its own PID/lease files when NCM is selected.
+# Keep the package installed but never start the package-wide daemon from rcS.
+if [ -f "$TARGET_DIR/etc/init.d/S80dnsmasq" ]; then
+    mv "$TARGET_DIR/etc/init.d/S80dnsmasq" \
+        "$TARGET_DIR/etc/init.d/dnsmasq"
+fi
+
+# The application has its own persistent logging. rsyslog is useful for
+# engineering/kernel diagnostics but is not required for normal operation, so
+# keep it installed without letting it compete with early UI/measurement work.
+if [ -f "$TARGET_DIR/etc/init.d/S01rsyslogd" ]; then
+    mv "$TARGET_DIR/etc/init.d/S01rsyslogd" \
+        "$TARGET_DIR/etc/init.d/rsyslogd"
 fi
 
 # Keep WILC genuinely on-demand in the deferred profiles.  eudev is allowed
