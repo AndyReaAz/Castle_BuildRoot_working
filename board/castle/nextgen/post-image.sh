@@ -50,6 +50,88 @@ stage_required "$BINARIES_DIR/zImage"     "${NEXTGEN_KERNEL_IMAGE:-}"     "$WORK
 
 stage_required "$BINARIES_DIR/nextgen.dtb"     "${NEXTGEN_DTB_IMAGE:-}"     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/microchip/nextgen.dtb"     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/nextgen.dtb"
 
+KERNEL_CONFIG="${NEXTGEN_KERNEL_CONFIG:-$WORKSPACE_DIR/linux-at91/.config}"
+if [ "${NEXTGEN_ALLOW_NONFAST_KERNEL:-0}" != "1" ]; then
+    [ -f "$KERNEL_CONFIG" ] || {
+        echo "error: cannot verify fast-boot kernel; missing $KERNEL_CONFIG" >&2
+        exit 1
+    }
+    grep -q '^CONFIG_KERNEL_LZ4=y# Fresh fast-boot cards carry the exact environment used by the matching
+# U-Boot build.  This removes the first-boot saveenv path and prevents an old
+# environment from overriding the fixed fast-boot command.
+UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
+UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
+MKENVIMAGE="${NEXTGEN_MKENVIMAGE:-$WORKSPACE_DIR/u-boot/tools/mkenvimage}"
+
+rm -f "$BINARIES_DIR/uboot.env"
+if [ -n "$UBOOT_ENV_SOURCE" ]; then
+    [ -f "$UBOOT_ENV_SOURCE" ] || {
+        echo "error: NEXTGEN_UBOOT_ENV does not exist: $UBOOT_ENV_SOURCE" >&2
+        exit 1
+    }
+    install -m 0644 "$UBOOT_ENV_SOURCE" "$BINARIES_DIR/uboot.env"
+else
+    [ -f "$UBOOT_ENV_TEXT" ] || {
+        echo "error: U-Boot environment source does not exist: $UBOOT_ENV_TEXT" >&2
+        exit 1
+    }
+    [ -x "$MKENVIMAGE" ] || {
+        echo "error: mkenvimage is not available: $MKENVIMAGE" >&2
+        echo "       build the fast-boot U-Boot first" >&2
+        exit 1
+    }
+    "$MKENVIMAGE" -s 0x4000 -o "$BINARIES_DIR/uboot.env" "$UBOOT_ENV_TEXT"
+fi
+printf 'NextGen boot: %-12s <- %s\n' "uboot.env" "${UBOOT_ENV_SOURCE:-$UBOOT_ENV_TEXT}"
+
+BOOT_IMAGE="$BINARIES_DIR/boot.vfat"
+BOOT_SIZE_MIB="${NEXTGEN_BOOT_SIZE_MIB:-16}"
+rm -f "$BOOT_IMAGE"
+truncate -s "${BOOT_SIZE_MIB}M" "$BOOT_IMAGE"
+"$HOST_DIR/sbin/mkfs.vfat" -n NEXTGEN "$BOOT_IMAGE" >/dev/null
+
+for file in boot.bin u-boot.bin zImage nextgen.dtb; do
+    "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$BINARIES_DIR/$file" "::/$file"
+done
+if [ -f "$BINARIES_DIR/uboot.env" ]; then
+    "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$BINARIES_DIR/uboot.env" "::/uboot.env"
+fi
+
+# Fast-boot U-Boot no longer displays a bitmap and the application owns the splash.
+
+# Transitional complete SD-boot image:
+# p1 FAT boot, p2 ext4 rootfs, p3 ext4 meter data.
+# The application requires the legacy data partition to be larger than 4 GiB.
+DATA_IMAGE="$BINARIES_DIR/data.ext4"
+DATA_IMAGE_SIZE="${NEXTGEN_DATA_IMAGE_SIZE:-5G}"
+
+rm -f "$DATA_IMAGE" "$BINARIES_DIR/sdcard.img"
+truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
+"$HOST_DIR/sbin/mkfs.ext4" -F -L data -m 0 "$DATA_IMAGE" >/dev/null
+
+"$BUILDROOT_DIR/support/scripts/genimage.sh" -c "$SCRIPT_DIR/genimage.cfg"
+
+(
+    cd "$BINARIES_DIR"
+    sha256sum boot.bin u-boot.bin zImage nextgen.dtb \
+        rootfs.ext4 > nextgen-image-manifest.sha256
+    if [ -f uboot.env ]; then
+        sha256sum uboot.env >> nextgen-image-manifest.sha256
+    fi
+)
+
+install -m 0755 "$SCRIPT_DIR/write-sd-card.sh" "$BINARIES_DIR/write-sd-card.sh"
+
+echo "NextGen boot FAT image: $BOOT_IMAGE"
+echo "NextGen full SD image:  $BINARIES_DIR/sdcard.img"
+echo "NextGen SD writer:      $BINARIES_DIR/write-sd-card.sh"
+ "$KERNEL_CONFIG" || {
+        echo "error: kernel is not configured for LZ4 compression" >&2
+        echo "       run board/castle/nextgen/prepare-fast-kernel.sh first" >&2
+        exit 1
+    }
+fi
+
 # Do not seed a fresh SD image with a saved U-Boot environment.  Current
 # U-Boot defaults deliberately create/save the environment on first boot
 # (env_saved guard in bootcmd).  Copying an old uboot.env here can override
