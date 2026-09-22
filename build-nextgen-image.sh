@@ -30,9 +30,9 @@ shift || true
     exit 1
 }
 
-if [ ! -f "$OUT/.config" ]; then
-    make -C "$ROOT" O="$OUT" castle_nextgen_dev_defconfig
-fi
+# Reapply the project defconfig on every profile build so changes to
+# module loading and other image policy cannot be hidden by a stale O= tree.
+make -C "$ROOT" O="$OUT" castle_nextgen_dev_defconfig
 
 printf 'NextGen image profile: %s\n' "$PROFILE"
 printf 'Kernel build:          %s\n' "$KERNEL_BUILD_DIR"
