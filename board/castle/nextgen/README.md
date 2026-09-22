@@ -45,6 +45,18 @@ The resulting deployment artifacts are:
 - `output-nextgen/images/write-sd-card.sh`
 - `output-nextgen/images/nextgen-image-manifest.sha256`
 
+The development ext4 root image is deliberately limited to 128 MiB. This both
+fails the Buildroot image generation if the populated rootfs grows beyond the
+first flash-root budget and keeps the SD test image representative of the
+planned 128 MiB UBI rootfs partition.
+
+The deferred SD kernel is also the flash-characterisation image. It keeps
+MTD/UBI/UBIFS available, disables UBI fastmap for a full-scan baseline, and
+ships mtd-utils. The concrete SPI NOR, QSPI and SPI-NAND drivers remain modules
+so they do not compete with early application startup. For quiet flash timing,
+SSH over the engineering USB link and run `/etc/init.d/S00NextGen stop`;
+this stops both the application and its restart watchdog.
+
 
 ## Kernel working checkout
 
