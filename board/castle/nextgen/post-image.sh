@@ -47,14 +47,11 @@ stage_required "$BINARIES_DIR/u-boot.bin" \
     "$WORKSPACE_DIR/u-boot/u-boot.bin"
 stage_required "$BINARIES_DIR/zImage" \
     "${NEXTGEN_KERNEL_IMAGE:-}" \
-    "$KERNEL_BUILD_DIR/arch/arm/boot/zImage" \
-    "$WORKSPACE_DIR/linux-at91/arch/arm/boot/zImage"
+    "$KERNEL_BUILD_DIR/arch/arm/boot/zImage"
 stage_required "$BINARIES_DIR/nextgen.dtb" \
     "${NEXTGEN_DTB_IMAGE:-}" \
     "$KERNEL_BUILD_DIR/arch/arm/boot/dts/microchip/nextgen.dtb" \
-    "$KERNEL_BUILD_DIR/arch/arm/boot/dts/nextgen.dtb" \
-    "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/microchip/nextgen.dtb" \
-    "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/nextgen.dtb"
+    "$KERNEL_BUILD_DIR/arch/arm/boot/dts/nextgen.dtb"
 
 UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
 UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
