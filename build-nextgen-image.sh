@@ -13,8 +13,15 @@ case "$PROFILE" in
     deferred)
         KERNEL_BUILD_DIR="$WORKSPACE/linux-working/build-fast-deferred"
         ;;
+    deferred-diag)
+        KERNEL_BUILD_DIR="$WORKSPACE/linux-working/build-fast-deferred"
+        NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-diag/u-boot.bin"
+        NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-diag/tools/mkenvimage"
+        NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_diag.env"
+        export NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
+        ;;
     *)
-        echo "Usage: $0 [baseline|deferred] [make-target ...]" >&2
+        echo "Usage: $0 [baseline|deferred|deferred-diag] [make-target ...]" >&2
         exit 2
         ;;
 esac
@@ -37,6 +44,10 @@ make -C "$ROOT" O="$OUT" castle_nextgen_dev_defconfig
 printf 'NextGen image profile: %s\n' "$PROFILE"
 printf 'Kernel build:          %s\n' "$KERNEL_BUILD_DIR"
 printf 'Buildroot output:      %s\n' "$OUT"
+if [ "$PROFILE" = "deferred-diag" ]; then
+    printf 'Diagnostic U-Boot:     %s\n' "$NEXTGEN_UBOOT_IMAGE"
+    printf 'Diagnostic env:        %s\n' "$NEXTGEN_UBOOT_ENV_TEXT"
+fi
 
 NEXTGEN_KERNEL_BUILD_DIR="$KERNEL_BUILD_DIR" \
 NEXTGEN_KERNEL_PROFILE="$PROFILE" \
