@@ -1,0 +1,31 @@
+# NextGen lean-kernel driver exclusions
+#
+# Keep this list alongside the Buildroot board files so features intentionally
+# removed from the production-oriented kernel are not forgotten.  This is a
+# tracking list, not a Kconfig fragment; the corresponding symbols are changed
+# in the linux-at91 kernel configuration itself.
+#
+# Revisit these when NEXTGEN_FULL_BUILD hardware or other optional interfaces
+# are brought back.
+
+CONFIG_MACB
+# SAMA5D2 GMAC / wired Ethernet. NextGen does not plan to use wired Ethernet.
+
+CONFIG_APDS9306
+# APDS9306 ambient-light sensor. Full-build-board sensor only; leave out while
+# its DTS node is hidden by NEXTGEN_FULL_BUILD.
+
+CONFIG_SENSORS_SHT4x
+# SHT4x humidity/temperature hwmon driver. Full-build-board sensor only; leave
+# out while its DTS node is hidden by NEXTGEN_FULL_BUILD.
+
+# Deliberately retained at present:
+# CONFIG_TOUCHSCREEN_GOODIX
+#   GT911 touchscreen is fitted and required.
+# CONFIG_IIO_ST_PRESS
+# CONFIG_IIO_ST_PRESS_I2C
+#   LPS22HB pressure/temperature sensor remains fitted for current development.
+#
+# KXTJ3 is accessed directly by the application over /dev/i2c-1.  Upstream
+# KXCJK1013 does not list KXTJ3 support, so no Kionix kernel-driver symbol is
+# recorded here unless the NextGen kernel has a separate/custom KXTJ3 driver.
