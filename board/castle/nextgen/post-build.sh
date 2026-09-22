@@ -69,6 +69,8 @@ install -m 0755 "$SCRIPT_DIR/rootfs-overlay/etc/init.d/S00NextGen" \
     "$TARGET_DIR/etc/init.d/S00NextGen"
 install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/startup.sh" \
     "$TARGET_DIR/root/startup.sh"
+install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/Exec/fwenv.sh" \
+    "$TARGET_DIR/root/Exec/fwenv.sh"
 
 # NextGen owns when NTP synchronisation is allowed (manual "Sync now" and the
 # Auto Time Sync setting). Keep chronyd/chronyc installed, but do not start the
