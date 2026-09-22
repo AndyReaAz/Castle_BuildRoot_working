@@ -102,6 +102,20 @@ EOF
         ;;
 esac
 
+# The Atmel UDC has a DT modalias, so eudev would otherwise load it during
+# early userspace even though gadget construction is application-owned.
+USB_GADGET_MODPROBE_CONF="$TARGET_DIR/etc/modprobe.d/nextgen-usb-gadget-deferred.conf"
+rm -f "$USB_GADGET_MODPROBE_CONF"
+case "$KERNEL_PROFILE" in
+    deferred|deferred-diag)
+        mkdir -p "$TARGET_DIR/etc/modprobe.d"
+        cat > "$USB_GADGET_MODPROBE_CONF" <<'EOF'
+# NextGen fast boot: the application loads the UDC only for a non-zero USB mask.
+blacklist atmel_usba_udc
+EOF
+        ;;
+esac
+
 # NetworkManager always maintains its generated resolver state here.  The
 # Buildroot skeleton points /etc/resolv.conf at /run/resolv.conf, but with
 # NetworkManager that target is never created, leaving DNS completely broken.
