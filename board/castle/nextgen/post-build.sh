@@ -179,6 +179,23 @@ EOF
         ;;
 esac
 
+# NOR and NAND are not part of SD-root startup. Keep them completely out of
+# automatic coldplug in the deferred profile so boot remains quiet and flash
+# probe/attach timing can be measured explicitly over engineering SSH.
+FLASH_MODPROBE_CONF="$TARGET_DIR/etc/modprobe.d/nextgen-flash-deferred.conf"
+rm -f "$FLASH_MODPROBE_CONF"
+case "$KERNEL_PROFILE" in
+    deferred|deferred-diag)
+        mkdir -p "$TARGET_DIR/etc/modprobe.d"
+        cat > "$FLASH_MODPROBE_CONF" <<'EOF'
+# NextGen SD fast boot / flash characterisation: load these explicitly.
+blacklist atmel-quadspi
+blacklist spi-nor
+blacklist spinand
+EOF
+        ;;
+esac
+
 # The Atmel UDC has a DT modalias, so eudev would otherwise load it during
 # early userspace even though gadget construction is application-owned.
 USB_GADGET_MODPROBE_CONF="$TARGET_DIR/etc/modprobe.d/nextgen-usb-gadget-deferred.conf"
