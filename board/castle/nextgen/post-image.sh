@@ -42,7 +42,10 @@ fi
 
 stage_required "$BINARIES_DIR/boot.bin" "$SD_BOOTSTRAP"
 
-stage_required "$BINARIES_DIR/u-boot.bin"     "${NEXTGEN_UBOOT_IMAGE:-}"     "$WORKSPACE_DIR/u-boot/u-boot.bin"
+stage_required "$BINARIES_DIR/u-boot.bin" \
+    "${NEXTGEN_UBOOT_IMAGE:-}" \
+    "$WORKSPACE_DIR/u-boot/build-fast/u-boot.bin" \
+    "$WORKSPACE_DIR/u-boot/u-boot.bin"
 
 stage_required "$BINARIES_DIR/zImage"     "${NEXTGEN_KERNEL_IMAGE:-}"     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/zImage"
 
