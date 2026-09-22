@@ -6,6 +6,10 @@ FUNCTIONFS=/dev/ffs-mtp
 USB_COMMON=/root/Exec/usb-gadget-common.sh
 LOG_DIR=/run/log
 
+SETTINGS0=/root/Exec/SettingsJSON0.dat
+SETTINGS1=/root/Exec/SettingsJSON1.dat
+SETTINGS_JSON=/run/usb-gadget-settings.json
+
 MTP_PID=/run/umtprd.pid
 MTP_LOG="$LOG_DIR/umtprd.log"
 
@@ -122,6 +126,181 @@ mode_to_mask()
     echo "$mask"
 }
 
+settings_count()
+{
+    file="$1"
+
+    [ -f "$file" ] || return 1
+    [ "$(wc -c < "$file" 2>/dev/null)" -ge 5 ] || return 1
+
+    count="$(od -An -N4 -tu4 "$file" 2>/dev/null | tr -d '[:space:]')"
+    case "$count" in
+        ''|*[!0-9]*)
+            return 1
+            ;;
+    esac
+
+    printf '%s\n' "$count"
+}
+
+settings_valid()
+{
+    file="$1"
+
+    [ -f "$file" ] || return 1
+    [ "$(wc -c < "$file" 2>/dev/null)" -ge 5 ] || return 1
+    tail -c +5 "$file" 2>/dev/null | jq -e . >/dev/null 2>&1
+}
+
+select_settings_file()
+{
+    best_file=""
+    best_count=""
+
+    for file in "$SETTINGS0" "$SETTINGS1"; do
+        settings_valid "$file" || continue
+        count="$(settings_count "$file")" || continue
+
+        if [ -z "$best_file" ] || [ "$count" -gt "$best_count" ]; then
+            best_file="$file"
+            best_count="$count"
+        fi
+    done
+
+    [ -n "$best_file" ] || return 1
+    printf '%s\n' "$best_file"
+}
+
+load_settings()
+{
+    settings_file="$(select_settings_file)" || return 1
+    tail -c +5 "$settings_file" > "$SETTINGS_JSON" || return 1
+    jq -e . "$SETTINGS_JSON" >/dev/null 2>&1
+}
+
+write_gadget_identity()
+{
+    if load_settings; then
+        SERIALNUMBER="$(jq -r '.SerialNumber // 0 | tonumber' "$SETTINGS_JSON" 2>/dev/null || echo 0)"
+        MANUFACTURER="$(jq -r '.Manufacturer // 0 | tonumber' "$SETTINGS_JSON" 2>/dev/null || echo 0)"
+        MODELTYPE="$(jq -r '.ModelType // 0 | tonumber' "$SETTINGS_JSON" 2>/dev/null || echo 0)"
+    else
+        SERIALNUMBER=0
+        MANUFACTURER=0
+        MODELTYPE=0
+    fi
+
+    printf "%06d\n" "$SERIALNUMBER" > "$GADGET/strings/0x409/serialnumber"
+
+    case "$MANUFACTURER" in
+        2)
+            echo "SKC"
+            ;;
+        *)
+            echo "Castle Group"
+            ;;
+    esac > "$GADGET/strings/0x409/manufacturer"
+
+    if [ "$MANUFACTURER" -eq 2 ]; then
+        case "$MODELTYPE" in
+            3)
+                echo "SoundCHEK PRO"
+                ;;
+            *)
+                echo "SoundCHEK"
+                ;;
+        esac
+    else
+        case "$MODELTYPE" in
+            1)
+                echo "dBAir"
+                ;;
+            2)
+                echo "dBAngel"
+                ;;
+            3)
+                echo "dBAir Pro"
+                ;;
+            *)
+                echo "Sonik Meter"
+                ;;
+        esac
+    fi > "$GADGET/strings/0x409/product"
+}
+
+load_gadget_modules()
+{
+    mask="$1"
+
+    modprobe atmel_usba_udc || {
+        echo "Failed to load Atmel USB device controller"
+        return 1
+    }
+
+    modprobe libcomposite || {
+        echo "Failed to load USB composite/configfs support"
+        return 1
+    }
+
+    if [ $((mask & BIT_CDC)) -ne 0 ]; then
+        modprobe usb_f_acm || {
+            echo "Failed to load CDC ACM gadget function"
+            return 1
+        }
+    fi
+
+    if [ $((mask & BIT_NCM)) -ne 0 ]; then
+        modprobe usb_f_ncm || {
+            echo "Failed to load NCM gadget function"
+            return 1
+        }
+    fi
+
+    if [ $((mask & BIT_MTP)) -ne 0 ]; then
+        modprobe usb_f_fs || {
+            echo "Failed to load FunctionFS gadget function"
+            return 1
+        }
+    fi
+}
+
+prepare_gadget_base()
+{
+    mask="$1"
+
+    load_gadget_modules "$mask" || return 1
+
+    mountpoint -q /sys/kernel/config || {
+        mount -t configfs none /sys/kernel/config || {
+            echo "Failed to mount configfs"
+            return 1
+        }
+    }
+
+    if [ -d "$GADGET" ]; then
+        return 0
+    fi
+
+    mkdir -p "$GADGET" || return 1
+
+    echo 0x1d6b > "$GADGET/idVendor"
+    echo 0x0104 > "$GADGET/idProduct"
+    echo 0x0200 > "$GADGET/bcdUSB"
+    echo 0x0100 > "$GADGET/bcdDevice"
+
+    echo 0xEF > "$GADGET/bDeviceClass"
+    echo 0x02 > "$GADGET/bDeviceSubClass"
+    echo 0x01 > "$GADGET/bDeviceProtocol"
+
+    mkdir -p "$GADGET/strings/0x409"
+    mkdir -p "$CONFIG"
+    mkdir -p "$CONFIG/strings/0x409"
+
+    write_gadget_identity || return 1
+
+    echo 250 > "$CONFIG/MaxPower"
+}
+
 mtp_running()
 {
     if [ -f "$MTP_PID" ]; then
@@ -161,6 +340,11 @@ stop_mtp()
 start_mtp()
 {
     mkdir -p "$LOG_DIR"
+
+    if ! grep -qs " /sdcard " /proc/mounts; then
+        echo "MTP requested but /sdcard is not mounted"
+        return 1
+    fi
 
     if [ -r "$USB_COMMON" ]; then
         usb_mtp_write_config || {
@@ -299,6 +483,39 @@ clear_links()
     rm -f "$CONFIG/ffs.mtp" 2>/dev/null || true
 }
 
+clear_functions()
+{
+    rmdir "$GADGET/functions/acm.usb0" 2>/dev/null || true
+    rmdir "$GADGET/functions/ncm.usb0" 2>/dev/null || true
+    rmdir "$GADGET/functions/ffs.mtp" 2>/dev/null || true
+}
+
+create_requested_functions()
+{
+    requested="$1"
+
+    if [ $((requested & BIT_CDC)) -ne 0 ]; then
+        [ -d "$GADGET/functions/acm.usb0" ] ||
+            mkdir "$GADGET/functions/acm.usb0" || return 1
+    fi
+
+    if [ $((requested & BIT_NCM)) -ne 0 ]; then
+        if [ ! -d "$GADGET/functions/ncm.usb0" ]; then
+            mkdir "$GADGET/functions/ncm.usb0" || return 1
+        fi
+        echo "$USB_DEV_MAC" > "$GADGET/functions/ncm.usb0/dev_addr" || return 1
+        echo "$USB_HOST_MAC" > "$GADGET/functions/ncm.usb0/host_addr" || return 1
+    fi
+
+    if [ $((requested & BIT_MTP)) -ne 0 ]; then
+        [ -d "$GADGET/functions/ffs.mtp" ] ||
+            mkdir "$GADGET/functions/ffs.mtp" || return 1
+    fi
+
+    printf 'NextGen %s\n' "$(mask_name "$requested")" >
+        "$CONFIG/strings/0x409/configuration"
+}
+
 link_function()
 {
     function="$1"
@@ -377,6 +594,17 @@ apply_mask()
         return 1
     fi
 
+    # A normal boot with every USB function disabled must not load the UDC,
+    # configfs or any gadget function module.
+    if [ "$requested" -eq 0 ] && [ ! -d "$GADGET" ]; then
+        echo "USB disabled"
+        return 0
+    fi
+
+    if [ "$requested" -ne 0 ]; then
+        prepare_gadget_base "$requested" || return 1
+    fi
+
     current="$(current_mask)"
 
     if [ "$current" -eq "$requested" ]; then
@@ -388,11 +616,14 @@ apply_mask()
     usb_down
     clear_links
     stop_mtp
+    clear_functions
 
     if [ "$requested" -eq 0 ]; then
         echo "USB disabled"
         return 0
     fi
+
+    create_requested_functions "$requested" || return 1
 
     if [ $((requested & BIT_CDC)) -ne 0 ]; then
         link_function acm.usb0 || return 1
@@ -411,6 +642,7 @@ apply_mask()
         usb_down
         clear_links
         stop_mtp
+        clear_functions
         return 1
     }
 
