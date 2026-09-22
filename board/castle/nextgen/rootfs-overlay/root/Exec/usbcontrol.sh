@@ -512,8 +512,8 @@ create_requested_functions()
             mkdir "$GADGET/functions/ffs.mtp" || return 1
     fi
 
-    printf 'NextGen %s\n' "$(mask_name "$requested")" >
-        "$CONFIG/strings/0x409/configuration"
+    printf 'NextGen %s\n' "$(mask_name "$requested")" \
+        > "$CONFIG/strings/0x409/configuration"
 }
 
 link_function()
