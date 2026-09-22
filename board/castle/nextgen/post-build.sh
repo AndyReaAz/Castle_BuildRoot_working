@@ -79,6 +79,15 @@ install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/Exec/fwenv.sh" \
 # because another chronyd instance already owns the runtime PID/socket.
 rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
 
+# BlueZ and the legacy NTP package are no longer selected, but Buildroot
+# output trees are incremental and package removal does not purge files
+# already installed into target. Prevent stale init scripts from putting
+# either daemon back onto the boot-critical path.
+rm -f \
+    "$TARGET_DIR/etc/init.d/S40bluetoothd" \
+    "$TARGET_DIR/etc/init.d/S49ntp" \
+    "$TARGET_DIR/etc/init.d/S49ntpd"
+
 # eudev remains the long-running hotplug manager, but its stock SysV script
 # performs a complete coldplug trigger + settle immediately after S00NextGen.
 # Critical NextGen devices are built in and available through devtmpfs; the
