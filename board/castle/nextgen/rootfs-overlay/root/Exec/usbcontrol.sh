@@ -232,35 +232,23 @@ load_gadget_modules()
 {
     mask="$1"
 
-    modprobe atmel_usba_udc || {
-        echo "Failed to load Atmel USB device controller"
-        return 1
-    }
-
-    modprobe libcomposite || {
-        echo "Failed to load USB composite/configfs support"
-        return 1
-    }
+    # These may be built in (control profile) or modules (deferred profile).
+    # A direct modprobe of a built-in-only configuration can fail when that
+    # image has no /lib/modules metadata, so loading is best-effort here.
+    # The configfs/function/UDC operations below are the authoritative checks.
+    modprobe atmel_usba_udc >/dev/null 2>&1 || true
+    modprobe libcomposite >/dev/null 2>&1 || true
 
     if [ $((mask & BIT_CDC)) -ne 0 ]; then
-        modprobe usb_f_acm || {
-            echo "Failed to load CDC ACM gadget function"
-            return 1
-        }
+        modprobe usb_f_acm >/dev/null 2>&1 || true
     fi
 
     if [ $((mask & BIT_NCM)) -ne 0 ]; then
-        modprobe usb_f_ncm || {
-            echo "Failed to load NCM gadget function"
-            return 1
-        }
+        modprobe usb_f_ncm >/dev/null 2>&1 || true
     fi
 
     if [ $((mask & BIT_MTP)) -ne 0 ]; then
-        modprobe usb_f_fs || {
-            echo "Failed to load FunctionFS gadget function"
-            return 1
-        }
+        modprobe usb_f_fs >/dev/null 2>&1 || true
     fi
 }
 
@@ -275,6 +263,11 @@ prepare_gadget_base()
             echo "Failed to mount configfs"
             return 1
         }
+    }
+
+    [ -d /sys/kernel/config/usb_gadget ] || {
+        echo "USB composite/configfs support is unavailable"
+        return 1
     }
 
     if [ -d "$GADGET" ]; then
