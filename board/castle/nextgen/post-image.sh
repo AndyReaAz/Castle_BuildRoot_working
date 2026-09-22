@@ -58,15 +58,11 @@ stage_required "$BINARIES_DIR/nextgen.dtb" \
     "$KERNEL_BUILD_DIR/arch/arm/boot/dts/microchip/nextgen.dtb" \
     "$KERNEL_BUILD_DIR/arch/arm/boot/dts/nextgen.dtb"
 
-# Ratified 2 MiB NOR layout reserves 32 KiB for AT91Bootstrap and
-# 0x138000 bytes for U-Boot. Refuse to package an image that would overlap
-# the redundant environment slots at 0x140000 and 0x150000.
-BOOTSTRAP_BYTES="$(wc -c < "$BINARIES_DIR/boot.bin")"
+# The same U-Boot binary is later destined for the ratified 0x138000-byte
+# NOR partition. Refuse to package a build that would overlap the environment.
+# (The SD AT91Bootstrap binary is a different profile; its 32 KiB NOR bound is
+# checked by the AT91Bootstrap NOR build itself.)
 UBOOT_BYTES="$(wc -c < "$BINARIES_DIR/u-boot.bin")"
-[ "$BOOTSTRAP_BYTES" -le $((0x8000)) ] || {
-    echo "error: boot.bin is too large for NOR bootstrap partition: $BOOTSTRAP_BYTES > 32768" >&2
-    exit 1
-}
 [ "$UBOOT_BYTES" -le $((0x138000)) ] || {
     echo "error: u-boot.bin is too large for NOR U-Boot partition: $UBOOT_BYTES > $((0x138000))" >&2
     exit 1
