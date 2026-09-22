@@ -68,8 +68,25 @@ rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
 # launch it; WiFiRun() starts this script at the application's existing
 # delayed Wi-Fi stage.
 if [ -f "$TARGET_DIR/etc/init.d/S45NetworkManager" ]; then
-    mv "$TARGET_DIR/etc/init.d/S45NetworkManager"        "$TARGET_DIR/etc/init.d/NetworkManager"
+    mv "$TARGET_DIR/etc/init.d/S45NetworkManager" \
+        "$TARGET_DIR/etc/init.d/NetworkManager"
 fi
+
+# Keep WILC genuinely on-demand in the deferred profiles.  eudev is allowed
+# to autoload the other deferred DT drivers, but the application explicitly
+# modprobes WILC at its delayed Wi-Fi stage before starting NetworkManager.
+WILC_MODPROBE_CONF="$TARGET_DIR/etc/modprobe.d/nextgen-wilc-deferred.conf"
+rm -f "$WILC_MODPROBE_CONF"
+case "$KERNEL_PROFILE" in
+    deferred|deferred-diag)
+        mkdir -p "$TARGET_DIR/etc/modprobe.d"
+        cat > "$WILC_MODPROBE_CONF" <<'EOF'
+# NextGen fast boot: Wi-Fi is loaded explicitly by the application.
+blacklist wilc-spi
+blacklist wilc-sdio
+EOF
+        ;;
+esac
 
 # NetworkManager always maintains its generated resolver state here.  The
 # Buildroot skeleton points /etc/resolv.conf at /run/resolv.conf, but with
