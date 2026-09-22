@@ -10,6 +10,16 @@ EXEC_DIR="$TARGET_DIR/root/Exec"
 COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
 mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" "$EXEC_DIR"
 
+# This branch renamed the application service from S55NextGen to S00NextGen.
+# Buildroot output trees are incremental and overlay rsync does not remove a
+# file that disappeared from the overlay, so explicitly remove the obsolete
+# service and restage the early-boot files on every image build.
+rm -f "$TARGET_DIR/etc/init.d/S55NextGen"
+install -m 0755 "$SCRIPT_DIR/rootfs-overlay/etc/init.d/S00NextGen" \
+    "$TARGET_DIR/etc/init.d/S00NextGen"
+install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/startup.sh" \
+    "$TARGET_DIR/root/startup.sh"
+
 # NextGen owns when NTP synchronisation is allowed (manual "Sync now" and the
 # Auto Time Sync setting). Keep chronyd/chronyc installed, but do not start the
 # package's background daemon unconditionally: it would both ignore the user
@@ -50,11 +60,28 @@ case "$PRODUCT" in
         ;;
 esac
 
-if [ -x "$APP_BINARY" ]; then
-    install -m 0755 "$APP_BINARY" "$TARGET_DIR/root/NextGen"
-else
-    echo "warning: NextGen application not staged (missing $APP_BINARY)" >&2
+if [ ! -x "$APP_BINARY" ]; then
+    echo "error: NextGen application not staged (missing $APP_BINARY)" >&2
+    exit 1
 fi
+
+# Never silently package an older application binary after switching branches
+# or changing startup/UI code.  The application remains a separate build, but
+# an image build now fails loudly if any maintained application source is newer
+# than the binary being staged.
+STALE_SOURCE="$(
+    find "$APP_DIR/Application" "$APP_DIR/LicenceGenerator/FirmwareReference" \
+        -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' \) \
+        -newer "$APP_BINARY" -print -quit 2>/dev/null || true
+)"
+if [ -n "$STALE_SOURCE" ]; then
+    echo "error: NextGen application binary is stale: $APP_BINARY" >&2
+    echo "       newer source: $STALE_SOURCE" >&2
+    echo "       rebuild the $PRODUCT application before rebuilding the image" >&2
+    exit 1
+fi
+
+install -m 0755 "$APP_BINARY" "$TARGET_DIR/root/NextGen"
 
 
 # Development images deliberately keep a password login recovery path.
