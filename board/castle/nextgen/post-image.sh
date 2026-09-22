@@ -46,9 +46,12 @@ stage_required "$BINARIES_DIR/u-boot.bin" \
     "$WORKSPACE_DIR/u-boot/u-boot.bin"
 stage_required "$BINARIES_DIR/zImage" \
     "${NEXTGEN_KERNEL_IMAGE:-}" \
+    "$WORKSPACE_DIR/linux-at91/build-fast/arch/arm/boot/zImage" \
     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/zImage"
 stage_required "$BINARIES_DIR/nextgen.dtb" \
     "${NEXTGEN_DTB_IMAGE:-}" \
+    "$WORKSPACE_DIR/linux-at91/build-fast/arch/arm/boot/dts/microchip/nextgen.dtb" \
+    "$WORKSPACE_DIR/linux-at91/build-fast/arch/arm/boot/dts/nextgen.dtb" \
     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/microchip/nextgen.dtb" \
     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/nextgen.dtb"
 
