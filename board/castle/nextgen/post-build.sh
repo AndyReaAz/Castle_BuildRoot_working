@@ -33,6 +33,11 @@ rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
 # Point libc directly at NetworkManager's canonical runtime resolver file.
 ln -snf ../run/NetworkManager/resolv.conf "$TARGET_DIR/etc/resolv.conf"
 
+for connection in "$TARGET_DIR"/etc/NetworkManager/system-connections/*.nmconnection; do
+    [ -f "$connection" ] || continue
+    chmod 0600 "$connection"
+done
+
 for name in Arial.ttf NotoSansCJKtc-Regular.ttf Translations.csv ionicons.ttf open-iconic.ttf; do
     [ ! -e "$COMMON_RUNTIME/$name" ] || cp -L "$COMMON_RUNTIME/$name" "$EXEC_DIR/$name"
 done
