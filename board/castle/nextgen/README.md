@@ -37,3 +37,17 @@ The resulting deployment artifacts are:
 - `output-nextgen/images/sdcard.img`
 - `output-nextgen/images/write-sd-card.sh`
 - `output-nextgen/images/nextgen-image-manifest.sha256`
+
+
+## Kernel working checkout
+
+The normal ChatGPT-accessible kernel checkout is expected at
+`../linux-working`, tracking `AndyReaAz/Castle_linux_working`. The hidden
+`.git/nextgen-batch-push/` repositories are only import/relay machinery and
+must not be treated as production build locations.
+
+`post-build.sh` installs the complete module tree from
+`../linux-working/build-fast/mods/lib/modules/<release>` into the target
+rootfs, while `post-image.sh` stages `zImage` and `nextgen.dtb` from the
+same build directory. Set `NEXTGEN_KERNEL_BUILD_DIR` only when intentionally
+packaging a different kernel build.

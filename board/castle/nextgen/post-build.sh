@@ -6,9 +6,43 @@ BUILDROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)"
 WORKSPACE_DIR="$(CDPATH= cd -- "$BUILDROOT_DIR/.." && pwd)"
 APP_DIR="${NEXTGEN_APP_DIR:-$WORKSPACE_DIR/app}"
 PRODUCT="${NEXTGEN_PRODUCT:-sound}"
+KERNEL_BUILD_DIR="${NEXTGEN_KERNEL_BUILD_DIR:-$WORKSPACE_DIR/linux-working/build-fast}"
+KERNEL_MODULES_ROOT="$KERNEL_BUILD_DIR/mods/lib/modules"
 EXEC_DIR="$TARGET_DIR/root/Exec"
 COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
 mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" "$EXEC_DIR"
+
+# The kernel repository builds and stages its own modules.  Install the whole
+# matching release tree before Buildroot creates rootfs.ext4 so zImage and
+# modules can never come from different kernel builds.
+if [ ! -d "$KERNEL_MODULES_ROOT" ]; then
+    echo "error: kernel module staging tree not found: $KERNEL_MODULES_ROOT" >&2
+    echo "       build ../linux-working with ./build-fast.sh first" >&2
+    echo "       or set NEXTGEN_KERNEL_BUILD_DIR explicitly" >&2
+    exit 1
+fi
+
+set -- "$KERNEL_MODULES_ROOT"/*
+[ "$#" -eq 1 ] && [ -d "$1" ] || {
+    echo "error: expected exactly one kernel release below $KERNEL_MODULES_ROOT" >&2
+    printf '       %s\n' "$@" >&2
+    exit 1
+}
+
+KERNEL_RELEASE="$(basename "$1")"
+EXPECTED_KERNEL_RELEASE="6.6.23-linux4microchip-2024.04+"
+[ "$KERNEL_RELEASE" = "$EXPECTED_KERNEL_RELEASE" ] || {
+    echo "error: unexpected kernel module release: $KERNEL_RELEASE" >&2
+    echo "       expected: $EXPECTED_KERNEL_RELEASE" >&2
+    exit 1
+}
+
+rm -rf "$TARGET_DIR/lib/modules/$KERNEL_RELEASE"
+mkdir -p "$TARGET_DIR/lib/modules"
+cp -a "$1" "$TARGET_DIR/lib/modules/"
+rm -f     "$TARGET_DIR/lib/modules/$KERNEL_RELEASE/build"     "$TARGET_DIR/lib/modules/$KERNEL_RELEASE/source"
+
+printf 'NextGen kernel modules: %s <- %s\n'     "$KERNEL_RELEASE" "$KERNEL_BUILD_DIR"
 
 # This branch renamed the application service from S55NextGen to S00NextGen.
 # Buildroot output trees are incremental and overlay rsync does not remove a
