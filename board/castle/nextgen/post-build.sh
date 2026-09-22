@@ -106,6 +106,33 @@ if [ -f "$TARGET_DIR/etc/init.d/S01rsyslogd" ]; then
         "$TARGET_DIR/etc/init.d/rsyslogd"
 fi
 
+# /etc/network/interfaces contains only loopback. S00NextGen brings lo up
+# directly before the application, so the generic ifupdown pass is redundant.
+if [ -f "$TARGET_DIR/etc/init.d/S40network" ]; then
+    mv "$TARGET_DIR/etc/init.d/S40network" \
+        "$TARGET_DIR/etc/init.d/network"
+fi
+
+# Skip the generic sysctl walker only when the finished target contains no
+# sysctl configuration from either NextGen or a selected package. This keeps
+# the optimisation safe if a future Buildroot package adds a real requirement.
+SYSCTL_CONFIG_FOUND=0
+for conf in \
+    "$TARGET_DIR/etc/sysctl.conf" \
+    "$TARGET_DIR"/etc/sysctl.d/*.conf \
+    "$TARGET_DIR"/usr/local/lib/sysctl.d/*.conf \
+    "$TARGET_DIR"/usr/lib/sysctl.d/*.conf \
+    "$TARGET_DIR"/lib/sysctl.d/*.conf
+do
+    [ -f "$conf" ] || continue
+    SYSCTL_CONFIG_FOUND=1
+    break
+done
+if [ "$SYSCTL_CONFIG_FOUND" -eq 0 ] && [ -f "$TARGET_DIR/etc/init.d/S02sysctl" ]; then
+    mv "$TARGET_DIR/etc/init.d/S02sysctl" \
+        "$TARGET_DIR/etc/init.d/sysctl"
+fi
+
 # Keep WILC genuinely on-demand in the deferred profiles.  eudev is allowed
 # to autoload the other deferred DT drivers, but the application explicitly
 # modprobes WILC at its delayed Wi-Fi stage before starting NetworkManager.
