@@ -614,8 +614,8 @@ apply_mask()
     fi
 
     usb_down
-    clear_links
     stop_mtp
+    clear_links
     clear_functions
 
     if [ "$requested" -eq 0 ]; then
@@ -640,8 +640,8 @@ apply_mask()
 
     usb_up || {
         usb_down
-        clear_links
         stop_mtp
+        clear_links
         clear_functions
         return 1
     }
