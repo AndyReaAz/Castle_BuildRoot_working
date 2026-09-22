@@ -19,14 +19,11 @@ JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 cfg="$KERNEL_DIR/scripts/config"
 config="$KERNEL_DIR/.config"
 
-# Fastest practical ARM zImage decompression on the current SAMA5D27 target.
 "$cfg" --file "$config" -e KERNEL_LZ4
 for sym in KERNEL_GZIP KERNEL_LZO KERNEL_LZMA KERNEL_XZ KERNEL_ZSTD; do
     "$cfg" --file "$config" -d "$sym"
 done
 
-# Known unused drivers already identified on the boot-split branch.  These are
-# deliberately conservative; ADC/audio/display/touch/WILC paths are left alone.
 for sym in MACB KXCJK1013 APDS9306 SENSORS_SHT4X; do
     "$cfg" --file "$config" -d "$sym"
 done
