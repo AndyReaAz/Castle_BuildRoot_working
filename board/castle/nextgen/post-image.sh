@@ -70,8 +70,17 @@ else
         echo "error: U-Boot environment source does not exist: $UBOOT_ENV_TEXT" >&2
         exit 1
     }
-    grep -q '^bootdelay=-2$' "$UBOOT_ENV_TEXT" || {
-        echo "error: U-Boot environment is not the fast-boot profile" >&2
+    case "${NEXTGEN_KERNEL_PROFILE:-baseline}" in
+        deferred-diag)
+            EXPECTED_BOOTDELAY=2
+            ;;
+        *)
+            EXPECTED_BOOTDELAY=-2
+            ;;
+    esac
+    grep -q "^bootdelay=${EXPECTED_BOOTDELAY}$" "$UBOOT_ENV_TEXT" || {
+        echo "error: unexpected U-Boot bootdelay in $UBOOT_ENV_TEXT" >&2
+        echo "       profile ${NEXTGEN_KERNEL_PROFILE:-baseline} expects bootdelay=${EXPECTED_BOOTDELAY}" >&2
         exit 1
     }
     [ -x "$MKENVIMAGE" ] || {
