@@ -39,4 +39,8 @@ printf 'Kernel build:          %s\n' "$KERNEL_BUILD_DIR"
 printf 'Buildroot output:      %s\n' "$OUT"
 
 NEXTGEN_KERNEL_BUILD_DIR="$KERNEL_BUILD_DIR" \
+NEXTGEN_KERNEL_PROFILE="$PROFILE" \
     make -C "$ROOT" O="$OUT" "$@"
+
+printf 'Built kernel profile:   %s\n' "$PROFILE"
+printf 'Profile marker:         /etc/nextgen-kernel-profile\n'
