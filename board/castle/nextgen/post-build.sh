@@ -63,6 +63,14 @@ install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/startup.sh" \
 # because another chronyd instance already owns the runtime PID/socket.
 rm -f "$TARGET_DIR/etc/init.d/S49chronyd"
 
+# NetworkManager is needed by the application, but it is intentionally kept
+# out of the boot critical path.  Remove the SysV S-prefix so rcS does not
+# launch it; WiFiRun() starts this script at the application's existing
+# delayed Wi-Fi stage.
+if [ -f "$TARGET_DIR/etc/init.d/S45NetworkManager" ]; then
+    mv "$TARGET_DIR/etc/init.d/S45NetworkManager"        "$TARGET_DIR/etc/init.d/NetworkManager"
+fi
+
 # NetworkManager always maintains its generated resolver state here.  The
 # Buildroot skeleton points /etc/resolv.conf at /run/resolv.conf, but with
 # NetworkManager that target is never created, leaving DNS completely broken.
