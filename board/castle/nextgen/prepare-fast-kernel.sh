@@ -29,18 +29,37 @@ for sym in MACB KXCJK1013 APDS9306 SENSORS_SHT4X; do
 done
 
 CROSS_COMPILE="${CROSS_COMPILE:-}"
+OUTPUT_DIR=""
 if [ -z "$CROSS_COMPILE" ]; then
-    for prefix in         "$BUILDROOT_DIR/output-nextgen/host/bin/arm-buildroot-linux-gnueabihf-"         "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-"
-    do
+    for output in "$BUILDROOT_DIR/output-nextgen" "$BUILDROOT_DIR/output"; do
+        prefix="$output/host/bin/arm-buildroot-linux-gnueabihf-"
         if [ -x "${prefix}gcc" ]; then
             CROSS_COMPILE="$prefix"
+            OUTPUT_DIR="$output"
             break
         fi
     done
+else
+    host_bin="$(dirname "${CROSS_COMPILE}gcc")"
+    if [ -d "$host_bin" ]; then
+        OUTPUT_DIR="$(CDPATH= cd -- "$host_bin/../.." 2>/dev/null && pwd || true)"
+    fi
 fi
 
 [ -n "$CROSS_COMPILE" ] || {
     echo "error: ARM Buildroot cross compiler not found; set CROSS_COMPILE" >&2
+    exit 1
+}
+
+if [ -n "$OUTPUT_DIR" ]; then
+    make -C "$BUILDROOT_DIR" O="$OUTPUT_DIR" host-lz4
+    PATH="$OUTPUT_DIR/host/bin:$PATH"
+    export PATH
+fi
+
+command -v lz4 >/dev/null 2>&1 || {
+    echo "error: host lz4 compressor not found" >&2
+    echo "       build Buildroot target host-lz4 or install lz4" >&2
     exit 1
 }
 
