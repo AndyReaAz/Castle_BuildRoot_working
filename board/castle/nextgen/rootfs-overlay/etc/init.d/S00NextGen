@@ -8,6 +8,11 @@ STOPFILE="/run/nextgen.stop"
 
 start()
 {
+    # The normal network init script only brought up loopback. Do that
+    # directly here so local sockets are available before the application
+    # without running ifupdown during the UI-critical startup window.
+    ifconfig lo 127.0.0.1 up 2>/dev/null || true
+
     if [ -f "$WATCHDOG_PIDFILE" ]; then
         PID=$(cat "$WATCHDOG_PIDFILE")
         if [ -d "/proc/$PID" ]; then
