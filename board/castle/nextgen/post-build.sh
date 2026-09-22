@@ -90,6 +90,24 @@ if [ -f "$TARGET_DIR/etc/init.d/S45NetworkManager" ]; then
         "$TARGET_DIR/etc/init.d/NetworkManager"
 fi
 
+# The USB recovery helper remains installed for manual/serial recovery, but it
+# must not run automatically: the application now waits until settings and
+# engineering state are final, then creates the selected gadget exactly once.
+if [ -f "$TARGET_DIR/etc/init.d/S50usb-gadget" ]; then
+    mv "$TARGET_DIR/etc/init.d/S50usb-gadget" \
+        "$TARGET_DIR/etc/init.d/usb-gadget"
+fi
+
+# sshd is engineering infrastructure, not a product startup dependency.
+# Starting it from rcS also performs first-boot host-key generation on the
+# Cortex-A5. Keep the script installed; the application launches it in the
+# background after the UI/measurement path is running when engineering mode
+# is enabled.
+if [ -f "$TARGET_DIR/etc/init.d/S50sshd" ]; then
+    mv "$TARGET_DIR/etc/init.d/S50sshd" \
+        "$TARGET_DIR/etc/init.d/sshd"
+fi
+
 # dnsmasq is only used by the engineering USB NCM path. usbcontrol.sh starts
 # an isolated instance with its own PID/lease files when NCM is selected.
 # Keep the package installed but never start the package-wide daemon from rcS.
