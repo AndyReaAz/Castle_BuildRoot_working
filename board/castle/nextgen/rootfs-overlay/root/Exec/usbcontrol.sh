@@ -569,6 +569,18 @@ repair_current_state()
         stop_mtp
     fi
 
+    if [ "$mask" -eq 0 ]; then
+        net_down
+        return 0
+    fi
+
+    # Links can exist after a previous partial setup even though the UDC never
+    # became bound. Repair that state before latching the requested mask.
+    if [ -z "$(cat "$GADGET/UDC" 2>/dev/null)" ]; then
+        usb_up || return 1
+        return 0
+    fi
+
     if [ $((mask & BIT_NCM)) -ne 0 ]; then
         net_up || return 1
     else
