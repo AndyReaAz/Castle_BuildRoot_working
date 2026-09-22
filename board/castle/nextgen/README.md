@@ -53,9 +53,12 @@ planned 128 MiB UBI rootfs partition.
 The deferred SD kernel is also the flash-characterisation image. It keeps
 MTD/UBI/UBIFS available, disables UBI fastmap for a full-scan baseline, and
 ships mtd-utils. The concrete SPI NOR, QSPI and SPI-NAND drivers remain modules
-so they do not compete with early application startup. For quiet flash timing,
-SSH over the engineering USB link and run `/etc/init.d/S00NextGen stop`;
-this stops both the application and its restart watchdog.
+and are blacklisted from udev alias autoload in this SD profile, so they do not
+compete with application startup and can be timed explicitly. For quiet flash
+timing, SSH over the engineering USB link and run
+`/etc/init.d/S00NextGen stop`; this stops both the application and its restart
+watchdog. Direct `modprobe spi-nor`, `modprobe atmel-quadspi` and
+`modprobe spinand` commands remain available for the test.
 
 
 ## Kernel working checkout
