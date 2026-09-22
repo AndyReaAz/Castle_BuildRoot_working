@@ -4,7 +4,6 @@ set -eu
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 BUILDROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)"
 WORKSPACE_DIR="$(CDPATH= cd -- "$BUILDROOT_DIR/.." && pwd)"
-APP_DIR="${NEXTGEN_APP_DIR:-$WORKSPACE_DIR/app}"
 
 : "${BINARIES_DIR:?Buildroot did not provide BINARIES_DIR}"
 : "${HOST_DIR:?Buildroot did not provide HOST_DIR}"
@@ -71,40 +70,18 @@ fi
 
 BOOT_IMAGE="$BINARIES_DIR/boot.vfat"
 BOOT_SIZE_MIB="${NEXTGEN_BOOT_SIZE_MIB:-16}"
-INITRAMFS_IMAGE="$BINARIES_DIR/psplash-initramfs.cpio.gz"
-
-echo "Building NextGen psplash initramfs against $TARGET_DIR"
-bash "$APP_DIR/scripts/build_psplash_initramfs.sh" \
-    --target-dir "$TARGET_DIR" \
-    --root-device /dev/mmcblk0p2 \
-    --root-fstype ext4 \
-    --root-options ro \
-    --gzip-only
-
-install -m 0644 "$APP_DIR/InitRamFs/psplash-initramfs.cpio.gz" "$INITRAMFS_IMAGE"
-
 rm -f "$BOOT_IMAGE"
 truncate -s "${BOOT_SIZE_MIB}M" "$BOOT_IMAGE"
 "$HOST_DIR/sbin/mkfs.vfat" -n NEXTGEN "$BOOT_IMAGE" >/dev/null
 
-for file in boot.bin u-boot.bin zImage nextgen.dtb psplash-initramfs.cpio.gz; do
+for file in boot.bin u-boot.bin zImage nextgen.dtb; do
     "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$BINARIES_DIR/$file" "::/$file"
 done
 if [ -f "$BINARIES_DIR/uboot.env" ]; then
     "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$BINARIES_DIR/uboot.env" "::/uboot.env"
 fi
 
-BOOT_LOGO_COUNT=0
-for logo in "$APP_DIR"/UbootLogos/*.bmp; do
-    [ -f "$logo" ] || continue
-    "$HOST_DIR/bin/mcopy" -o -i "$BOOT_IMAGE" "$logo" "::/$(basename "$logo")"
-    BOOT_LOGO_COUNT=$((BOOT_LOGO_COUNT + 1))
-done
-
-[ "$BOOT_LOGO_COUNT" -gt 0 ] || {
-    echo "error: no U-Boot logos found under $APP_DIR/UbootLogos" >&2
-    exit 1
-}
+# Fast-boot U-Boot no longer displays a bitmap and the application owns the splash.
 
 # Transitional complete SD-boot image:
 # p1 FAT boot, p2 ext4 rootfs, p3 ext4 meter data.
@@ -121,7 +98,7 @@ truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
 (
     cd "$BINARIES_DIR"
     sha256sum boot.bin u-boot.bin zImage nextgen.dtb \
-        psplash-initramfs.cpio.gz rootfs.ext4 > nextgen-image-manifest.sha256
+        rootfs.ext4 > nextgen-image-manifest.sha256
     if [ -f uboot.env ]; then
         sha256sum uboot.env >> nextgen-image-manifest.sha256
     fi
