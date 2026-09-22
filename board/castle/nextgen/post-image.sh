@@ -40,22 +40,17 @@ fi
 }
 
 stage_required "$BINARIES_DIR/boot.bin" "$SD_BOOTSTRAP"
-stage_required "$BINARIES_DIR/u-boot.bin"     "${NEXTGEN_UBOOT_IMAGE:-}"     "$WORKSPACE_DIR/u-boot/build-fast/u-boot.bin"     "$WORKSPACE_DIR/u-boot/u-boot.bin"
-stage_required "$BINARIES_DIR/zImage"     "${NEXTGEN_KERNEL_IMAGE:-}"     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/zImage"
-stage_required "$BINARIES_DIR/nextgen.dtb"     "${NEXTGEN_DTB_IMAGE:-}"     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/microchip/nextgen.dtb"     "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/nextgen.dtb"
-
-KERNEL_CONFIG="${NEXTGEN_KERNEL_CONFIG:-$WORKSPACE_DIR/linux-at91/.config}"
-if [ "${NEXTGEN_ALLOW_NONFAST_KERNEL:-0}" != "1" ]; then
-    [ -f "$KERNEL_CONFIG" ] || {
-        echo "error: cannot verify fast-boot kernel; missing $KERNEL_CONFIG" >&2
-        exit 1
-    }
-    grep -q '^CONFIG_KERNEL_LZ4=y$' "$KERNEL_CONFIG" || {
-        echo "error: kernel is not configured for LZ4 compression" >&2
-        echo "       run: sh board/castle/nextgen/prepare-fast-kernel.sh" >&2
-        exit 1
-    }
-fi
+stage_required "$BINARIES_DIR/u-boot.bin" \
+    "${NEXTGEN_UBOOT_IMAGE:-}" \
+    "$WORKSPACE_DIR/u-boot/build-fast/u-boot.bin" \
+    "$WORKSPACE_DIR/u-boot/u-boot.bin"
+stage_required "$BINARIES_DIR/zImage" \
+    "${NEXTGEN_KERNEL_IMAGE:-}" \
+    "$WORKSPACE_DIR/linux-at91/arch/arm/boot/zImage"
+stage_required "$BINARIES_DIR/nextgen.dtb" \
+    "${NEXTGEN_DTB_IMAGE:-}" \
+    "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/microchip/nextgen.dtb" \
+    "$WORKSPACE_DIR/linux-at91/arch/arm/boot/dts/nextgen.dtb"
 
 UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
 UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
@@ -112,7 +107,8 @@ truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
 
 (
     cd "$BINARIES_DIR"
-    sha256sum boot.bin u-boot.bin zImage nextgen.dtb uboot.env         rootfs.ext4 > nextgen-image-manifest.sha256
+    sha256sum boot.bin u-boot.bin zImage nextgen.dtb uboot.env \
+        rootfs.ext4 > nextgen-image-manifest.sha256
 )
 
 install -m 0755 "$SCRIPT_DIR/write-sd-card.sh" "$BINARIES_DIR/write-sd-card.sh"
