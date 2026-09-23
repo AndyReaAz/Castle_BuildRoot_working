@@ -32,16 +32,21 @@ case "$PROFILE" in
         KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
         EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
         KERNEL_PROFILE="deferred"
+        NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-sd/binaries/boot.bin"
+        NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-fast/u-boot.bin"
+        NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-fast/tools/mkenvimage"
+        export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE
         ;;
     6.18-diag)
         KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
         KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
         EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
         KERNEL_PROFILE="deferred-diag"
+        NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-sd-timing/binaries/boot.bin"
         NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-diag/u-boot.bin"
         NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-diag/tools/mkenvimage"
         NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_diag.env"
-        export NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
+        export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     *)
         echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-diag] [make-target ...]" >&2
@@ -59,6 +64,22 @@ shift || true
     echo "error: selected kernel has no nextgen.dtb: $KERNEL_BUILD_DIR" >&2
     exit 1
 }
+
+if [ -n "${NEXTGEN_AT91BOOTSTRAP:-}" ]; then
+    [ -f "$NEXTGEN_AT91BOOTSTRAP" ] || {
+        echo "error: selected profile has no AT91Bootstrap image:" >&2
+        echo "       $NEXTGEN_AT91BOOTSTRAP" >&2
+        exit 1
+    }
+fi
+
+if [ -n "${NEXTGEN_UBOOT_IMAGE:-}" ]; then
+    [ -f "$NEXTGEN_UBOOT_IMAGE" ] || {
+        echo "error: selected profile has no U-Boot image:" >&2
+        echo "       $NEXTGEN_UBOOT_IMAGE" >&2
+        exit 1
+    }
+fi
 
 if [ -n "$KERNEL_MODULES_ROOT" ]; then
     [ -d "$KERNEL_MODULES_ROOT/$EXPECTED_KERNEL_RELEASE" ] || {
