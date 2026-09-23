@@ -7,7 +7,7 @@ WORKSPACE_DIR="$(CDPATH= cd -- "$BUILDROOT_DIR/.." && pwd)"
 APP_DIR="${NEXTGEN_APP_DIR:-$WORKSPACE_DIR/app}"
 PRODUCT="${NEXTGEN_PRODUCT:-sound}"
 KERNEL_BUILD_DIR="${NEXTGEN_KERNEL_BUILD_DIR:-$WORKSPACE_DIR/linux-working/build-fast}"
-KERNEL_MODULES_ROOT="$KERNEL_BUILD_DIR/mods/lib/modules"
+KERNEL_MODULES_ROOT="${NEXTGEN_KERNEL_MODULES_ROOT:-$KERNEL_BUILD_DIR/mods/lib/modules}"
 EXEC_DIR="$TARGET_DIR/root/Exec"
 COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
 mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" "$EXEC_DIR"
@@ -16,7 +16,7 @@ printf '%s\n' "$KERNEL_PROFILE" > "$TARGET_DIR/etc/nextgen-kernel-profile"
 
 # Install the complete module tree when this kernel profile produces modules.
 # The LZ4 control kernel is monolithic and legitimately has no module tree.
-EXPECTED_KERNEL_RELEASE="6.6.23-linux4microchip-2024.04+"
+EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.18.35-linux4microchip-2026.04.2+}"
 rm -rf "$TARGET_DIR/lib/modules/$EXPECTED_KERNEL_RELEASE"
 
 if [ -d "$KERNEL_MODULES_ROOT" ]; then
@@ -184,6 +184,8 @@ case "$KERNEL_PROFILE" in
 # NextGen fast boot: Wi-Fi is loaded explicitly by the application.
 blacklist wilc-spi
 blacklist wilc-sdio
+blacklist wilc1000-spi
+blacklist wilc1000-sdio
 EOF
         ;;
 esac

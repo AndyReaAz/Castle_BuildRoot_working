@@ -71,3 +71,25 @@ must not be treated as production build locations.
 `post-build.sh` installs a complete module tree from the selected kernel build when one exists; the monolithic control kernel legitimately has none. `post-image.sh` stages `zImage` and `nextgen.dtb` from that same selected build directory.
 
 For the control image, leave `NEXTGEN_KERNEL_BUILD_DIR` unset. For the deferred-module image, set it to `../linux-working/build-fast-deferred`.
+
+
+## Linux 6.18 migration branch
+
+On `chatgpt/nextgen-6.18`, the first Linux 6.18 SD baseline uses the
+external kernel build in `../linux-6.18/build-fast-6.18`. The matching
+kernel release is `6.18.35-linux4microchip-2026.04.2+`.
+
+The post-build script accepts `NEXTGEN_KERNEL_MODULES_ROOT` so a validated
+external `modules_install` staging tree can be packaged without copying it
+into the kernel checkout first. For the current migration test:
+
+```sh
+NEXTGEN_KERNEL_BUILD_DIR=../linux-6.18/build-fast-6.18 \
+NEXTGEN_KERNEL_MODULES_ROOT=../staging/linux-6.18-modules/lib/modules \
+NEXTGEN_EXPECTED_KERNEL_RELEASE=6.18.35-linux4microchip-2026.04.2+ \
+NEXTGEN_KERNEL_PROFILE=deferred-diag
+```
+
+WILC3000 remains on firmware 16.3 for the first 6.18 comparison. The firmware
+package installs the same Wi-Fi binary at both the legacy `mchp/` path and
+the 6.18 driver path `atmel/wilc3000_wifi_firmware-1.bin`.
