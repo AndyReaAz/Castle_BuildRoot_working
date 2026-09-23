@@ -15,12 +15,10 @@ start() {
 		-- --pid-file="$PIDFILE" $NETWORKMANAGER_ARGS
 	status=$?
 	if [ "$status" -eq 0 ]; then
-		/*
-		 * start-stop-daemon only tells us that the process was launched.
-		 * NetworkManager's D-Bus API can take noticeably longer to become
-		 * usable on NextGen while the deferred Wi-Fi driver is settling.
-		 * Do not return success until nmcli can actually talk to it.
-		 */
+		# start-stop-daemon only tells us that the process was launched.
+		# NetworkManager's D-Bus API can take noticeably longer to become
+		# usable on NextGen while the deferred Wi-Fi driver is settling.
+		# Do not return success until nmcli can actually talk to it.
 		count=0
 		while [ "$count" -lt 50 ]; do
 			if nmcli -t -f STATE general status >/dev/null 2>&1; then
