@@ -194,15 +194,17 @@ EOF
 esac
 
 # Keep only modular flash drivers out of automatic coldplug in deferred
-# profiles.  Linux 6.18 builds the QSPI/SPI-NAND path into the kernel so MTD
-# has one stable lifetime from boot; the 6.6 deferred profile still carries
-# those drivers as modules.  Derive the blacklist from the selected kernel
-# configuration rather than assuming one linkage policy for every profile.
+# profiles. Linux 6.18 keeps QSPI/SPI-NAND built in so NAND MTD is available
+# from boot, while SPI-NOR remains a module and is loaded only for bootloader
+# maintenance.
 FLASH_MODPROBE_CONF="$TARGET_DIR/etc/modprobe.d/nextgen-flash-deferred.conf"
 rm -f "$FLASH_MODPROBE_CONF"
 case "$KERNEL_PROFILE" in
     deferred|deferred-diag)
-        FLASH_BLACKLIST=""
+        mkdir -p "$TARGET_DIR/etc/modprobe.d"
+        : > "$FLASH_MODPROBE_CONF"
+        echo '# NextGen deferred flash modules; built-in flash paths are not listed.' >> "$FLASH_MODPROBE_CONF"
+
         if grep -q '^CONFIG_SPI_ATMEL_QUADSPI=m
 # The Atmel UDC has a DT modalias, so eudev would otherwise load it during
 # early userspace even though gadget construction is application-owned.
@@ -297,8 +299,7 @@ if [ "${NEXTGEN_DEV_SSH_PASSWORD_LOGIN:-1}" = "1" ] && [ -f "$TARGET_DIR/etc/ssh
         printf 'PasswordAuthentication yes\n' >> "$TARGET_DIR/etc/ssh/sshd_config"
 fi
  "$KERNEL_BUILD_DIR/.config" 2>/dev/null; then
-            FLASH_BLACKLIST="$FLASH_BLACKLIST
-blacklist atmel-quadspi"
+            echo 'blacklist atmel-quadspi' >> "$FLASH_MODPROBE_CONF"
         fi
         if grep -q '^CONFIG_MTD_SPI_NOR=m
 # The Atmel UDC has a DT modalias, so eudev would otherwise load it during
@@ -394,8 +395,7 @@ if [ "${NEXTGEN_DEV_SSH_PASSWORD_LOGIN:-1}" = "1" ] && [ -f "$TARGET_DIR/etc/ssh
         printf 'PasswordAuthentication yes\n' >> "$TARGET_DIR/etc/ssh/sshd_config"
 fi
  "$KERNEL_BUILD_DIR/.config" 2>/dev/null; then
-            FLASH_BLACKLIST="$FLASH_BLACKLIST
-blacklist spi-nor"
+            echo 'blacklist spi-nor' >> "$FLASH_MODPROBE_CONF"
         fi
         if grep -q '^CONFIG_MTD_SPI_NAND=m
 # The Atmel UDC has a DT modalias, so eudev would otherwise load it during
@@ -491,16 +491,7 @@ if [ "${NEXTGEN_DEV_SSH_PASSWORD_LOGIN:-1}" = "1" ] && [ -f "$TARGET_DIR/etc/ssh
         printf 'PasswordAuthentication yes\n' >> "$TARGET_DIR/etc/ssh/sshd_config"
 fi
  "$KERNEL_BUILD_DIR/.config" 2>/dev/null; then
-            FLASH_BLACKLIST="$FLASH_BLACKLIST
-blacklist spinand"
-        fi
-
-        if [ -n "$FLASH_BLACKLIST" ]; then
-            mkdir -p "$TARGET_DIR/etc/modprobe.d"
-            {
-                echo '# NextGen deferred flash modules; built-in flash paths are not listed.'
-                printf '%s\n' "$FLASH_BLACKLIST"
-            } > "$FLASH_MODPROBE_CONF"
+            echo 'blacklist spinand' >> "$FLASH_MODPROBE_CONF"
         fi
         ;;
 esac
