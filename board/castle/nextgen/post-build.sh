@@ -16,7 +16,7 @@ printf '%s\n' "$KERNEL_PROFILE" > "$TARGET_DIR/etc/nextgen-kernel-profile"
 
 # Install the complete module tree when this kernel profile produces modules.
 # The LZ4 control kernel is monolithic and legitimately has no module tree.
-EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.18.35-linux4microchip-2026.04.2+}"
+EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.6.23-linux4microchip-2024.04+}"
 # output-nextgen is incremental. Never let a prior 6.6 external module tree
 # leak into a 6.18 image alongside the selected release.
 rm -rf \

@@ -13,12 +13,15 @@ EXPECTED_KERNEL_RELEASE=""
 case "$PROFILE" in
     baseline)
         KERNEL_BUILD_DIR="$WORKSPACE/linux-working/build-fast"
+        EXPECTED_KERNEL_RELEASE="6.6.23-linux4microchip-2024.04+"
         ;;
     deferred)
         KERNEL_BUILD_DIR="$WORKSPACE/linux-working/build-fast-deferred"
+        EXPECTED_KERNEL_RELEASE="6.6.23-linux4microchip-2024.04+"
         ;;
     deferred-diag)
         KERNEL_BUILD_DIR="$WORKSPACE/linux-working/build-fast-deferred"
+        EXPECTED_KERNEL_RELEASE="6.6.23-linux4microchip-2024.04+"
         NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-diag/u-boot.bin"
         NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-diag/tools/mkenvimage"
         NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_diag.env"
