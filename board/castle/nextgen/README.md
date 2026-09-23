@@ -93,3 +93,16 @@ NEXTGEN_KERNEL_PROFILE=deferred-diag
 WILC3000 remains on firmware 16.3 for the first 6.18 comparison. The firmware
 package installs the same Wi-Fi binary at both the legacy `mchp/` path and
 the 6.18 driver path `atmel/wilc3000_wifi_firmware-1.bin`.
+
+
+The convenience image wrapper has explicit 6.18 profiles:
+
+```sh
+./build-nextgen-image.sh 6.18
+./build-nextgen-image.sh 6.18-diag
+```
+
+The diagnostic variant selects the existing diagnostic U-Boot/environment while
+using the same 6.18 kernel, DTB and staged module tree. Internally it retains
+the existing `deferred-diag` policy so WILC, QSPI and SPI-NAND stay
+application/manual-load controlled.
