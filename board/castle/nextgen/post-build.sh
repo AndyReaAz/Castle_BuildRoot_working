@@ -188,9 +188,7 @@ case "$KERNEL_PROFILE" in
         cat > "$WILC_MODPROBE_CONF" <<'EOF'
 # NextGen fast boot: Wi-Fi is loaded explicitly by the application.
 blacklist wilc-spi
-blacklist wilc-sdio
 blacklist wilc1000-spi
-blacklist wilc1000-sdio
 EOF
         ;;
 esac
