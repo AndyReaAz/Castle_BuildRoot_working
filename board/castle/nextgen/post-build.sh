@@ -21,6 +21,7 @@ EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.6.23-linux4microch
 # leak into a 6.18 image alongside the selected release.
 rm -rf \
     "$TARGET_DIR/lib/modules/6.6.23-linux4microchip-2024.04+" \
+    "$TARGET_DIR/lib/modules/6.18.35-linux4microchip-2026.04.2+" \
     "$TARGET_DIR/lib/modules/$EXPECTED_KERNEL_RELEASE"
 
 if [ -d "$KERNEL_MODULES_ROOT" ]; then
