@@ -30,15 +30,12 @@ endef
 define WILC_FIRMWARE_INSTALL_TARGET_CMDS
 	$(INSTALL) -d -m 0755 $(TARGET_DIR)/lib/firmware/mchp/
 	$(WILC_FIRMWARE_INSTALL_FILES)
-ifeq ($(BR2_PACKAGE_WILC3000_FIRMWARE),y)
-	# Linux 6.18 uses the upstream WILC firmware naming convention.
-	# Keep the existing mchp/ copy as well so 6.6 and 6.18 can be
-	# compared against the exact same firmware binary.
-	$(INSTALL) -d -m 0755 $(TARGET_DIR)/lib/firmware/atmel/
-	$(INSTALL) -m 0644 \
-		$(TARGET_DIR)/lib/firmware/mchp/wilc3000_wifi_firmware.bin \
-		$(TARGET_DIR)/lib/firmware/atmel/wilc3000_wifi_firmware-1.bin
-endif
+	@if [ "$(BR2_PACKAGE_WILC3000_FIRMWARE)" = "y" ]; then \
+		$(INSTALL) -d -m 0755 $(TARGET_DIR)/lib/firmware/atmel/; \
+		$(INSTALL) -m 0644 \
+			$(TARGET_DIR)/lib/firmware/mchp/wilc3000_wifi_firmware.bin \
+			$(TARGET_DIR)/lib/firmware/atmel/wilc3000_wifi_firmware-1.bin; \
+	fi
 endef
 
 $(eval $(generic-package))
