@@ -64,7 +64,7 @@ for helper in nextgen-update-install nextgen-update-accept usbcontrol.sh fwenv.s
     [ -x "$BIN/$helper" ] || fail "platform helper $helper is missing"
 done
 
-for font in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf; do
+for font in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
     [ -r "$COMMON_SHARE/$font" ] || fail "platform font $font is missing"
 done
 
