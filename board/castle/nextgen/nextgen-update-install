@@ -17,6 +17,17 @@ PACKAGE="$2"
 case "$PRODUCT" in sound|vibra) ;; *) die "invalid product '$PRODUCT'" ;; esac
 [ -f "$PACKAGE" ] || die "package not found: $PACKAGE"
 
+PACKAGE_DIR="$(dirname "$PACKAGE")"
+PACKAGE_NAME="${PACKAGE##*/}"
+case "$PACKAGE_DIR" in
+    /sdcard/public|/sdcard/temp/TempFirmware) ;;
+    *) die "update package is outside an approved staging directory" ;;
+esac
+case "$PACKAGE_NAME" in
+    ''|*[!A-Za-z0-9_.-]*|*.part) die "invalid update package name: $PACKAGE_NAME" ;;
+esac
+case "$PACKAGE_NAME" in *.zip) ;; *) die "update package is not a ZIP" ;; esac
+
 ROOT=/opt/nextgen
 APP_ROOT="$ROOT/app/$PRODUCT"
 STATE_ROOT="$ROOT/state/$PRODUCT"
@@ -27,7 +38,7 @@ STAGE=
 
 cleanup()
 {
-    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$STATE_ROOT/.pending.$$" "$STATE_ROOT/.install-progress.$$"
+    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$STATE_ROOT/.pending.$" "$STATE_ROOT/.cleanup.$" "$STATE_ROOT/.install-progress.$"
     [ -z "$STAGE" ] || rm -rf "$STAGE"
 }
 trap cleanup EXIT INT TERM
@@ -180,10 +191,14 @@ rm -f "$APP_ROOT/.previous.$$" "$APP_ROOT/.active.$$"
 ln -s "$OLD" "$APP_ROOT/.previous.$$"
 mv -Tf "$APP_ROOT/.previous.$$" "$APP_ROOT/previous"
 
-printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.$$"
+printf '%s\n' "$PACKAGE" > "$STATE_ROOT/.cleanup.$"
 sync
-mv -f "$STATE_ROOT/.pending.$$" "$STATE_ROOT/pending"
-rm -f "$STATE_ROOT/booting"
+mv -f "$STATE_ROOT/.cleanup.$" "$STATE_ROOT/cleanup"
+
+printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.$"
+sync
+mv -f "$STATE_ROOT/.pending.$" "$STATE_ROOT/pending"
+rm -f "$STATE_ROOT/booting" "$STATE_ROOT/rollback"
 sync
 
 ln -s "$NEW" "$APP_ROOT/.active.$$"
