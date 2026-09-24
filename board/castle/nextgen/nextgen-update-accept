@@ -11,26 +11,127 @@ STATE_ROOT="$ROOT/state/$PRODUCT"
 PENDING="$STATE_ROOT/pending"
 BOOTING="$STATE_ROOT/booting"
 ACCEPTED="$STATE_ROOT/accepted"
+ROLLBACK="$STATE_ROOT/rollback"
+CLEANUP="$STATE_ROOT/cleanup"
 
-[ -f "$PENDING" ] || {
+cleanup_download()
+{
+    outcome="$1"
+
+    [ -f "$CLEANUP" ] || {
+        [ "$outcome" != rollback ] || rm -f "$ROLLBACK"
+        return 0
+    }
+
+    cleanup_version=
+    package=
+    extra=
+    IFS=' ' read -r cleanup_version package extra < "$CLEANUP" || return 1
+    case "$cleanup_version" in ''|*[!0-9]*) return 1 ;; esac
+    [ -n "$package" ] && [ -z "$extra" ] || return 1
+
+    package_dir="${package%/*}"
+    package_name="${package##*/}"
+    case "$package_dir" in
+        /sdcard/public|/sdcard/temp/TempFirmware) ;;
+        *) return 1 ;;
+    esac
+    case "$package_name" in
+        ''|*[!A-Za-z0-9_.-]*|*.part) return 1 ;;
+    esac
+
+    if [ "$outcome" = accepted ]; then
+        rm -f "$package"
+        if [ "$package_dir" = /sdcard/temp/TempFirmware ]; then
+            rm -f "$package_dir/.status" "$package_dir/.status.nextgen.tmp"
+        fi
+    else
+        if [ "$package_dir" = /sdcard/temp/TempFirmware ]; then
+            status="$package_dir/.status"
+            if [ -f "$package" ]; then
+                line="$(cat "$status" 2>/dev/null || true)"
+                case "$line" in
+                    applying:*)
+                        value="${line#applying:}"
+                        case "$value" in
+                            ''|*[!0-9]*) ;;
+                            *)
+                                printf 'ready:%s\n' "$value" > "$package_dir/.status.nextgen.tmp"
+                                sync
+                                mv -f "$package_dir/.status.nextgen.tmp" "$status"
+                                ;;
+                        esac
+                        ;;
+                esac
+            else
+                rm -f "$status" "$package_dir/.status.nextgen.tmp"
+            fi
+        fi
+        # A USB update in /sdcard/public is deliberately retained after a
+        # rollback so the operator can choose to retry or remove it.
+    fi
+
+    sync
+    rm -f "$CLEANUP" "$ROLLBACK"
+    sync
+    return 0
+}
+
+# Rollback is decided by the launcher before /sdcard is mounted. By the time
+# this helper runs the application has mounted/recovered storage, so finish the
+# download-state repair now, before FTP starts later in the boot.
+if [ -f "$ROLLBACK" ]; then
+    cleanup_download rollback || true
     rm -f "$BOOTING"
     exit 0
-}
+fi
+
+if [ ! -f "$PENDING" ]; then
+    rm -f "$BOOTING"
+
+    # A power loss may have occurred after the launcher finalised a durable
+    # acceptance but before the package cleanup completed.
+    if [ -f "$CLEANUP" ]; then
+        cleanup_version=
+        cleanup_package=
+        cleanup_extra=
+        IFS=' ' read -r cleanup_version cleanup_package cleanup_extra < "$CLEANUP" || true
+        active="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
+        accepted_line="$(cat "$ACCEPTED" 2>/dev/null || true)"
+        if [ -n "$cleanup_version" ] &&
+           [ "$accepted_line" = "$active $cleanup_version" ]; then
+            cleanup_download accepted || true
+        else
+            cleanup_download rollback || true
+        fi
+    fi
+    exit 0
+fi
 
 new=
 old=
 version=
 extra=
 IFS=' ' read -r new old version extra < "$PENDING" || exit 1
+case "$new" in slotA|slotB) ;; *) exit 1 ;; esac
+case "$old" in slotA|slotB|factory) ;; *) exit 1 ;; esac
+case "$version" in ''|*[!0-9]*) exit 1 ;; esac
 [ -z "$extra" ] || exit 1
 
 ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
 [ "$ACTIVE" = "$new" ] || exit 1
 [ "$(cat "$BOOTING" 2>/dev/null || true)" = "$new" ] || exit 1
 
-printf '%s %s\n' "$new" "$version" > "$STATE_ROOT/.accepted.$$"
+printf '%s %s\n' "$new" "$version" > "$STATE_ROOT/.accepted.tmp"
 sync
-mv -f "$STATE_ROOT/.accepted.$$" "$ACCEPTED"
+mv -f "$STATE_ROOT/.accepted.tmp" "$ACCEPTED"
+sync
+
+# Failure to clean removable storage must not turn a proven-good application
+# into a rollback. The durable accepted marker above is authoritative; cleanup
+# is retried on a later boot if necessary.
+cleanup_download accepted || true
+
 rm -f "$PENDING" "$BOOTING"
 sync
 
