@@ -49,7 +49,7 @@ atomic_link()
 {
     target="$1"
     link="$2"
-    tmp="$APP_ROOT/.link.$"
+    tmp="$APP_ROOT/.link.tmp"
     rm -f "$tmp"
     ln -s "$target" "$tmp"
     mv -Tf "$tmp" "$link"
@@ -58,7 +58,7 @@ atomic_link()
 
 mark_rollback()
 {
-    printf '%s\n' rollback > "$STATE_ROOT/.rollback.$"
+    printf '%s\n' rollback > "$STATE_ROOT/.rollback.tmp"
     sync
     mv -f "$STATE_ROOT/.rollback.$" "$ROLLBACK"
     rm -f "$PENDING" "$BOOTING"
@@ -101,7 +101,7 @@ if [ -f "$PENDING" ]; then
                 rm -f "$BOOTING"
             fi
         else
-            printf '%s\n' "$new" > "$STATE_ROOT/.booting.$"
+            printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
             sync
             mv -f "$STATE_ROOT/.booting.$" "$BOOTING"
             sync
