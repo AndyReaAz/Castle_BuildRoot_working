@@ -118,7 +118,9 @@ files and mutable instrument state:
   platform/bin/            Buildroot-owned helpers
   platform/share/          update verification policy/key
   common/share/            realm-independent fonts/assets
-  common/state/            realm-independent writable state (engmode, crash log)
+                           (Arial.ttf, NotoSansCJKtc-Regular.ttf,
+                            ionicons.ttf, open-iconic.ttf)
+  common/state/            realm-independent writable state (engmode, NextGenCrash.log)
   app/<sound|vibra>/
     slotA/                 update slot
     slotB/                 update slot, created on first routine update
@@ -127,7 +129,9 @@ files and mutable instrument state:
     previous -> slotA
   data/<sound|vibra>/      settings, calibration, templates, FTP queue
   state/platform/          platform transaction state
+                           (sd-format.pending, sd-reformat.legacy)
   state/<sound|vibra>/     update/rollback state
+                           (pending, booting, accepted, rollback, cleanup)
 ```
 
 A fresh image seeds `slotA` and `factory` from the same validated application
