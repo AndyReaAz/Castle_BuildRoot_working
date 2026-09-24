@@ -3,11 +3,13 @@
 GADGET=/sys/kernel/config/usb_gadget/g1
 CONFIG="$GADGET/configs/c.1"
 FUNCTIONFS=/dev/ffs-mtp
-USB_COMMON=/root/Exec/usb-gadget-common.sh
+USB_COMMON=/opt/nextgen/platform/bin/usb-gadget-common.sh
 LOG_DIR=/run/log
 
-SETTINGS0=/root/Exec/SettingsJSON0.dat
-SETTINGS1=/root/Exec/SettingsJSON1.dat
+PRODUCT="$(cat /etc/nextgen-product 2>/dev/null || echo sound)"
+DATA_ROOT="/opt/nextgen/data/$PRODUCT"
+SETTINGS0="$DATA_ROOT/SettingsJSON0.dat"
+SETTINGS1="$DATA_ROOT/SettingsJSON1.dat"
 SETTINGS_JSON=/run/usb-gadget-settings.json
 
 MTP_PID=/run/umtprd.pid
