@@ -59,6 +59,11 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 trap cleanup EXIT INT TERM
 
+for state in pending booting rollback cleanup; do
+    [ ! -e "$STATE_ROOT/$state" ] ||
+        die "previous update transaction still needs recovery/cleanup"
+done
+
 rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$ENTRIES" "$SIG_TMP" \
     "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
 : > "$TARGETS"
@@ -258,10 +263,10 @@ sync
 
 # Record the complete staged transaction durably. The running application keeps
 # using the old active slot; the platform launcher performs the single active
-# symlink switch on the following reboot.
-# Acceptance belongs to this transaction, not merely a slot/version pair left
-# by an older run. Remove the old proof before publishing the new intent.
-rm -f "$STATE_ROOT/accepted"
+# symlink switch on the following reboot. Keep the existing accepted marker:
+# it is proof that OLD is known-good and cannot match NEW+version because
+# routine updates are strictly monotonic.
+rm -f "$STATE_ROOT/booting" "$STATE_ROOT/rollback"
 sync
 
 printf '%s %s\n' "$version" "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
@@ -271,7 +276,6 @@ mv -f "$STATE_ROOT/.cleanup.tmp" "$STATE_ROOT/cleanup"
 printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.tmp"
 sync
 mv -f "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/pending"
-rm -f "$STATE_ROOT/booting" "$STATE_ROOT/rollback"
 sync
 
 echo "NextGen update: staged $PRODUCT version $version in $NEW; reboot required"
