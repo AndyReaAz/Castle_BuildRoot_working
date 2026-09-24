@@ -60,7 +60,7 @@ mark_rollback()
 {
     printf '%s\n' rollback > "$STATE_ROOT/.rollback.tmp"
     sync
-    mv -f "$STATE_ROOT/.rollback.$" "$ROLLBACK"
+    mv -f "$STATE_ROOT/.rollback.tmp" "$ROLLBACK"
     rm -f "$PENDING" "$BOOTING"
     sync
 }
@@ -103,7 +103,7 @@ if [ -f "$PENDING" ]; then
         else
             printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
             sync
-            mv -f "$STATE_ROOT/.booting.$" "$BOOTING"
+            mv -f "$STATE_ROOT/.booting.tmp" "$BOOTING"
             sync
             echo "NextGen launcher: trying pending slot $new version $version"
         fi
