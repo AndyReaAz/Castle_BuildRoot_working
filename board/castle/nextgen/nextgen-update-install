@@ -31,19 +31,28 @@ case "$PACKAGE_NAME" in *.zip) ;; *) die "update package is not a ZIP" ;; esac
 ROOT=/opt/nextgen
 APP_ROOT="$ROOT/app/$PRODUCT"
 STATE_ROOT="$ROOT/state/$PRODUCT"
-MEMBERS="$STATE_ROOT/.members.$$"
-MANIFEST_TMP="$STATE_ROOT/.manifest.$$"
-TARGETS="$STATE_ROOT/.targets.$$"
+MEMBERS="$STATE_ROOT/.members.tmp"
+MANIFEST_TMP="$STATE_ROOT/.manifest.tmp"
+TARGETS="$STATE_ROOT/.targets.tmp"
 STAGE=
+LOCK="$STATE_ROOT/install.lock"
 
 cleanup()
 {
-    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$STATE_ROOT/.pending.$" "$STATE_ROOT/.cleanup.$" "$STATE_ROOT/.install-progress.$"
+    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" \
+        "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
     [ -z "$STAGE" ] || rm -rf "$STAGE"
+    rmdir "$LOCK" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
 
 mkdir -p "$APP_ROOT" "$STATE_ROOT"
+if ! mkdir "$LOCK" 2>/dev/null; then
+    die "another application install is already in progress"
+fi
+trap cleanup EXIT INT TERM
+
+rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" \
+    "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
 : > "$TARGETS"
 
 unzip -Z1 "$PACKAGE" > "$MEMBERS" || die "cannot read package directory"
@@ -107,7 +116,7 @@ case "$ACTIVE" in
     *) die "active application slot is not initialised" ;;
 esac
 
-STAGE="$APP_ROOT/.$NEW.staging.$$"
+STAGE="$APP_ROOT/.$NEW.staging"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 
@@ -187,22 +196,22 @@ STAGE=
 sync
 
 # Record the rollback intent durably before changing the active symlink.
-rm -f "$APP_ROOT/.previous.$$" "$APP_ROOT/.active.$$"
-ln -s "$OLD" "$APP_ROOT/.previous.$$"
-mv -Tf "$APP_ROOT/.previous.$$" "$APP_ROOT/previous"
+rm -f "$APP_ROOT/.previous.tmp" "$APP_ROOT/.active.tmp"
+ln -s "$OLD" "$APP_ROOT/.previous.tmp"
+mv -Tf "$APP_ROOT/.previous.tmp" "$APP_ROOT/previous"
 
-printf '%s\n' "$PACKAGE" > "$STATE_ROOT/.cleanup.$"
+printf '%s\n' "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
 sync
 mv -f "$STATE_ROOT/.cleanup.$" "$STATE_ROOT/cleanup"
 
-printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.$"
+printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.tmp"
 sync
 mv -f "$STATE_ROOT/.pending.$" "$STATE_ROOT/pending"
 rm -f "$STATE_ROOT/booting" "$STATE_ROOT/rollback"
 sync
 
-ln -s "$NEW" "$APP_ROOT/.active.$$"
-mv -Tf "$APP_ROOT/.active.$$" "$APP_ROOT/active"
+ln -s "$NEW" "$APP_ROOT/.active.tmp"
+mv -Tf "$APP_ROOT/.active.tmp" "$APP_ROOT/active"
 sync
 
 echo "NextGen update: installed $PRODUCT version $version into $NEW; reboot required"
