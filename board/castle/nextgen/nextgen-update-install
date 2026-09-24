@@ -200,7 +200,7 @@ rm -f "$APP_ROOT/.previous.tmp" "$APP_ROOT/.active.tmp"
 ln -s "$OLD" "$APP_ROOT/.previous.tmp"
 mv -Tf "$APP_ROOT/.previous.tmp" "$APP_ROOT/previous"
 
-printf '%s\n' "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
+printf '%s %s\n' "$version" "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
 sync
 mv -f "$STATE_ROOT/.cleanup.$" "$STATE_ROOT/cleanup"
 
