@@ -179,7 +179,8 @@ fi
 
 # Keep WILC genuinely on-demand in the deferred profiles.  eudev is allowed
 # to autoload the other deferred DT drivers, but the application explicitly
-# modprobes WILC at its delayed Wi-Fi stage before starting NetworkManager.
+# starts D-Bus and NetworkManager, waits for NetworkManager's D-Bus service to
+# become ready, then modprobes WILC at its delayed Wi-Fi stage.
 WILC_MODPROBE_CONF="$TARGET_DIR/etc/modprobe.d/nextgen-wilc-deferred.conf"
 rm -f "$WILC_MODPROBE_CONF"
 case "$KERNEL_PROFILE" in
