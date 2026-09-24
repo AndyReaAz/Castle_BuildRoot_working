@@ -21,7 +21,7 @@ BOOTING="$STATE_ROOT/booting"
 
 mkdir -p "$STATE_ROOT"
 
-valid_slot()
+valid_update_slot()
 {
     case "$1" in
         slotA|slotB) return 0 ;;
@@ -29,9 +29,17 @@ valid_slot()
     esac
 }
 
+valid_app_ref()
+{
+    case "$1" in
+        slotA|slotB|factory) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 slot_app_valid()
 {
-    valid_slot "$1" &&
+    valid_app_ref "$1" &&
     [ -x "$APP_ROOT/$1/NextGen" ] &&
     [ -r "$APP_ROOT/$1/Translations.csv" ]
 }
@@ -56,7 +64,7 @@ if [ -f "$PENDING" ]; then
     extra=
     IFS=' ' read -r new old version extra < "$PENDING" || true
 
-    if ! valid_slot "$new" || ! valid_slot "$old" || [ -n "$extra" ]; then
+    if ! valid_update_slot "$new" || ! valid_app_ref "$old" || [ -n "$extra" ]; then
         echo "NextGen launcher: discarding malformed pending update"
         rm -f "$PENDING" "$BOOTING"
         sync
@@ -110,9 +118,13 @@ if slot_app_valid "$PREVIOUS"; then
     exec "$APP_ROOT/$PREVIOUS/NextGen"
 fi
 
-if [ -x "$APP_ROOT/factory/NextGen" ] && [ -r "$APP_ROOT/factory/Translations.csv" ]; then
-    echo "NextGen launcher: both update slots invalid; launching factory image"
-    exec "$APP_ROOT/factory/NextGen"
+if slot_app_valid factory; then
+    echo "NextGen launcher: both update slots invalid; recovering factory image"
+    atomic_link factory "$APP_ROOT/active"
+    atomic_link factory "$APP_ROOT/previous"
+    rm -f "$PENDING" "$BOOTING"
+    sync
+    exec "$APP_ROOT/active/NextGen"
 fi
 
 echo "NextGen launcher: no valid application image" >&2
