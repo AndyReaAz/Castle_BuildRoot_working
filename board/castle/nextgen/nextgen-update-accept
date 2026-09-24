@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+[ "$#" -eq 1 ] || exit 2
+PRODUCT="$1"
+case "$PRODUCT" in sound|vibra) ;; *) exit 2 ;; esac
+
+ROOT=/opt/nextgen
+APP_ROOT="$ROOT/app/$PRODUCT"
+STATE_ROOT="$ROOT/state/$PRODUCT"
+PENDING="$STATE_ROOT/pending"
+BOOTING="$STATE_ROOT/booting"
+ACCEPTED="$STATE_ROOT/accepted"
+
+[ -f "$PENDING" ] || {
+    rm -f "$BOOTING"
+    exit 0
+}
+
+new=
+old=
+version=
+extra=
+IFS=' ' read -r new old version extra < "$PENDING" || exit 1
+[ -z "$extra" ] || exit 1
+
+ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
+[ "$ACTIVE" = "$new" ] || exit 1
+[ "$(cat "$BOOTING" 2>/dev/null || true)" = "$new" ] || exit 1
+
+printf '%s %s\n' "$new" "$version" > "$STATE_ROOT/.accepted.$$"
+sync
+mv -f "$STATE_ROOT/.accepted.$$" "$ACCEPTED"
+rm -f "$PENDING" "$BOOTING"
+sync
+
+echo "NextGen update: accepted $PRODUCT $new version $version"
