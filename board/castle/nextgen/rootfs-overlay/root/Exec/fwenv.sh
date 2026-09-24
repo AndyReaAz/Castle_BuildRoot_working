@@ -4,6 +4,10 @@ set -u
 SD_CONFIG=/etc/fw_env.sd.config
 FLASH_CONFIG=/etc/fw_env.flash.config
 
+BACKEND=""
+CONFIG=""
+BOOT_MOUNTED_BY_US=0
+
 die()
 {
     echo "fwenv: $*" >&2
@@ -17,10 +21,27 @@ find_tool()
     printf '%s\n' "$TOOL"
 }
 
+cleanup()
+{
+    STATUS=$?
+
+    if [ "$BOOT_MOUNTED_BY_US" -eq 1 ]; then
+        # A write may still be completing through the FAT block cache.
+        sync
+        umount /boot || {
+            echo "fwenv: warning: unable to unmount /boot" >&2
+            [ "$STATUS" -ne 0 ] || STATUS=1
+        }
+        BOOT_MOUNTED_BY_US=0
+    fi
+
+    trap - EXIT INT TERM
+    exit "$STATUS"
+}
+
 select_config()
 {
     CMDLINE="$(cat /proc/cmdline 2>/dev/null || true)"
-    BACKEND=""
 
     case " $CMDLINE " in
         *" nextgen.env=sd "*)
@@ -53,8 +74,9 @@ select_config()
             if ! grep -qs ' /boot ' /proc/mounts; then
                 mount /boot ||
                     die "unable to mount /boot for SD U-Boot environment"
+                BOOT_MOUNTED_BY_US=1
             fi
-            printf '%s\n' "$SD_CONFIG"
+            CONFIG="$SD_CONFIG"
             ;;
         flash)
             # Deliberately no guessed fallback here. The current kernel NOR
@@ -62,7 +84,7 @@ select_config()
             # is enabled only when an explicitly validated config is installed.
             [ -r "$FLASH_CONFIG" ] ||
                 die "flash environment config is not installed"
-            printf '%s\n' "$FLASH_CONFIG"
+            CONFIG="$FLASH_CONFIG"
             ;;
         *)
             die "unsupported backend: $BACKEND"
@@ -74,7 +96,8 @@ select_config()
 ACTION="$1"
 shift
 
-CONFIG="$(select_config)" || exit $?
+trap cleanup EXIT INT TERM
+select_config
 
 case "$ACTION" in
     config)
@@ -83,12 +106,15 @@ case "$ACTION" in
         ;;
     print)
         FW_PRINTENV="$(find_tool fw_printenv)"
-        exec "$FW_PRINTENV" -c "$CONFIG" "$@"
+        "$FW_PRINTENV" -c "$CONFIG" "$@"
         ;;
     set)
         [ "$#" -ge 1 ] || die "set requires a variable name"
         FW_SETENV="$(find_tool fw_setenv)"
-        exec "$FW_SETENV" -c "$CONFIG" "$@"
+        "$FW_SETENV" -c "$CONFIG" "$@"
+        # Ensure the FAT-backed environment is durable before cleanup unmounts
+        # a boot partition that this wrapper mounted temporarily.
+        [ "$BACKEND" != "sd" ] || sync
         ;;
     *)
         die "unknown action: $ACTION"
