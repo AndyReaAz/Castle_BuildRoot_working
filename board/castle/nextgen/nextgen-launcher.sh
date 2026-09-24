@@ -66,7 +66,14 @@ if [ -f "$PENDING" ]; then
         sync
     else
         BOOT_SLOT="$(cat "$BOOTING" 2>/dev/null || true)"
-        if [ "$BOOT_SLOT" = "$new" ]; then
+        ACCEPTED="$(cat "$STATE_ROOT/accepted" 2>/dev/null || true)"
+        if [ "$ACCEPTED" = "$new $version" ]; then
+            # The application durably accepted the new slot but power may have
+            # disappeared before it could clear the transient files.
+            echo "NextGen launcher: finalising accepted slot $new version $version"
+            rm -f "$PENDING" "$BOOTING"
+            sync
+        elif [ "$BOOT_SLOT" = "$new" ]; then
             if slot_app_valid "$old"; then
                 echo "NextGen launcher: update $version failed acceptance; rolling back $new -> $old"
                 atomic_link "$new" "$APP_ROOT/previous"
@@ -79,9 +86,9 @@ if [ -f "$PENDING" ]; then
                 rm -f "$BOOTING"
             fi
         else
-            printf '%s\n' "$new" > "$STATE_ROOT/.booting.$$"
+            printf '%s\n' "$new" > "$STATE_ROOT/.booting.$"
             sync
-            mv -f "$STATE_ROOT/.booting.$$" "$BOOTING"
+            mv -f "$STATE_ROOT/.booting.$" "$BOOTING"
             sync
             echo "NextGen launcher: trying pending slot $new version $version"
         fi
