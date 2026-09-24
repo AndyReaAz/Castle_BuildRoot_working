@@ -181,7 +181,7 @@ valid_target()
     value="$1"
     [ "${#value}" -le 200 ] || return 1
     case "$value" in
-        ''|/*|*\\*|*//*|*[!A-Za-z0-9_./-]|bundle.info) return 1 ;;
+        ''|/*|*\\*|*//*|*[!A-Za-z0-9_./-]*|bundle.info) return 1 ;;
     esac
     oldifs="$IFS"
     IFS='/'
