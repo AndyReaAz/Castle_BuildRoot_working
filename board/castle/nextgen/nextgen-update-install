@@ -70,7 +70,7 @@ while IFS= read -r member; do
         */*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid archive member: $member" ;;
     esac
     member_count=$((member_count + 1))
-    [ "$member_count" -le 129 ] || die "too many archive members"
+    [ "$member_count" -le 130 ] || die "too many archive members"
     case "$member" in
         manifest_V*_*.txt)
             manifest_count=$((manifest_count + 1))
