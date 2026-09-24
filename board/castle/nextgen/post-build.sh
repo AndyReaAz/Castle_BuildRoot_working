@@ -428,6 +428,8 @@ printf 'slotA %s\n' "$APP_VERSION" > "$STATE_REALM/accepted"
     { echo "error: platform fwenv helper is missing" >&2; exit 1; }
 [ -r "$PLATFORM_SHARE/update-signing-policy" ] ||
     { echo "error: update signing policy is missing" >&2; exit 1; }
+[ -x "$TARGET_DIR/usr/bin/openssl" ] ||
+    { echo "error: target OpenSSL verifier is missing" >&2; exit 1; }
 [ ! -e "$TARGET_DIR/root/Exec" ] ||
     { echo "error: obsolete /root/Exec survived image staging" >&2; exit 1; }
 [ ! -e "$TARGET_DIR/root/NextGen" ] ||
