@@ -106,3 +106,56 @@ The diagnostic variant selects the existing diagnostic U-Boot/environment while
 using the same 6.18 kernel, DTB and staged module tree. Internally it retains
 the existing `deferred-diag` policy so WILC, QSPI and SPI-NAND stay
 application/manual-load controlled.
+
+
+## Application slot layout
+
+The root filesystem now separates platform files, release-owned application
+files and mutable instrument state:
+
+```text
+/opt/nextgen/
+  platform/bin/            Buildroot-owned helpers
+  platform/share/          shared fonts and update verification policy/key
+  app/<sound|vibra>/
+    slotA/                 update slot
+    slotB/                 update slot, created on first routine update
+    factory/               image-built recovery copy
+    active -> slotA
+    previous -> slotA
+  data/common/             mutable state shared across application realms
+  data/<sound|vibra>/      settings, calibration, templates, FTP queue
+  state/platform/          platform transaction state
+  state/<sound|vibra>/     update/rollback state
+```
+
+A fresh image seeds `slotA` and `factory` from the same validated application
+build. The launcher selects `active`; routine updates are fully unpacked and
+validated into the inactive slot before the launcher changes that one symlink.
+The application accepts a newly selected slot only after it reaches the normal
+measurement-started milestone. Failure before acceptance causes the next
+launcher invocation to restore `previous`.
+
+Routine update bundles use format 3. They contain only slot-relative release
+files, SHA-256 for every payload and, for production, an Ed25519 signature over
+the exact manifest. Platform/kernel/DTB/bootloader changes remain full-image
+work and are deliberately outside the routine updater.
+
+Development images default to an explicit `unsigned-development` policy.
+To make an image require signatures, provide a public key:
+
+```sh
+NEXTGEN_UPDATE_PUBLIC_KEY=/secure/update-public.pem \
+NEXTGEN_REQUIRE_SIGNED_UPDATES=1 \
+    ./build-nextgen-image.sh <profile>
+```
+
+The corresponding private key stays off the meter and out of the repositories.
+The application release tool accepts it through
+`NEXTGEN_UPDATE_SIGNING_KEY` or `--signing-key`.
+
+After Buildroot stages the root filesystem,
+`board/castle/nextgen/verify-target-layout.sh` checks the complete application
+layout, slot metadata, helpers, fonts and signing policy. A bad layout therefore
+fails the image build rather than producing a card image with a latent startup
+failure.
