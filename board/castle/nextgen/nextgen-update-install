@@ -34,12 +34,15 @@ STATE_ROOT="$ROOT/state/$PRODUCT"
 MEMBERS="$STATE_ROOT/.members.tmp"
 MANIFEST_TMP="$STATE_ROOT/.manifest.tmp"
 TARGETS="$STATE_ROOT/.targets.tmp"
+SIG_TMP="$STATE_ROOT/.manifest-signature.tmp"
+PUBLIC_KEY="$ROOT/platform/share/update-public.pem"
+SIGNING_POLICY="$ROOT/platform/share/update-signing-policy"
 STAGE=
 LOCK="$STATE_ROOT/install.lock"
 
 cleanup()
 {
-    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" \
+    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$SIG_TMP" \
         "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
     [ -z "$STAGE" ] || rm -rf "$STAGE"
     rmdir "$LOCK" 2>/dev/null || true
@@ -51,7 +54,7 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 trap cleanup EXIT INT TERM
 
-rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" \
+rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$SIG_TMP" \
     "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
 : > "$TARGETS"
 
@@ -59,6 +62,7 @@ unzip -Z1 "$PACKAGE" > "$MEMBERS" || die "cannot read package directory"
 
 member_count=0
 manifest_count=0
+signature_count=0
 manifest_name=
 while IFS= read -r member; do
     [ -n "$member" ] || die "empty archive member"
@@ -71,6 +75,9 @@ while IFS= read -r member; do
         manifest_V*_*.txt)
             manifest_count=$((manifest_count + 1))
             manifest_name="$member"
+            ;;
+        manifest.sig)
+            signature_count=$((signature_count + 1))
             ;;
     esac
 done < "$MEMBERS"
@@ -93,6 +100,27 @@ manifest_md5="$(digest_from_name "$manifest_name")" ||
     die "manifest filename has no valid digest"
 actual_md5="$(md5sum "$MANIFEST_TMP" | awk '{print $1}')"
 [ "$manifest_md5" = "$actual_md5" ] || die "manifest digest mismatch"
+
+policy="$(cat "$SIGNING_POLICY" 2>/dev/null || true)"
+case "$policy" in
+    ed25519-required)
+        [ -r "$PUBLIC_KEY" ] || die "signed-update policy has no public key"
+        [ "$signature_count" -eq 1 ] || die "signed bundle requires exactly one manifest.sig"
+        unzip -p "$PACKAGE" manifest.sig > "$SIG_TMP" ||
+            die "cannot extract manifest signature"
+        openssl pkeyutl -verify -pubin -inkey "$PUBLIC_KEY" -rawin \
+            -in "$MANIFEST_TMP" -sigfile "$SIG_TMP" >/dev/null 2>&1 ||
+            die "manifest signature verification failed"
+        ;;
+    unsigned-development)
+        [ "$signature_count" -eq 0 ] ||
+            die "signed bundle cannot be verified by this development image"
+        echo "NextGen update: WARNING accepting unsigned development bundle" >&2
+        ;;
+    *)
+        die "missing or invalid update signing policy"
+        ;;
+esac
 
 magic=
 format=
@@ -168,7 +196,7 @@ done
 
 entry_count="$(($(wc -l < "$MANIFEST_TMP") - 1))"
 [ "$entry_count" -ge 2 ] || die "bundle has too few payloads"
-[ "$((entry_count + 1))" -eq "$member_count" ] ||
+[ "$((entry_count + 1 + signature_count))" -eq "$member_count" ] ||
     die "archive contains files not declared by the manifest"
 [ -x "$STAGE/NextGen" ] || die "bundle has no executable NextGen"
 [ -r "$STAGE/Translations.csv" ] || die "bundle has no Translations.csv"
