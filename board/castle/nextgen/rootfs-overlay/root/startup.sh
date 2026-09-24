@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 
-PRODUCT_FILE=/etc/nextgen-product
-ROOT=/opt/nextgen
+# Production uses the fixed image paths below.  Environment overrides exist only
+# so the real launcher can be exercised against an isolated host-side fixture.
+PRODUCT_FILE="${NEXTGEN_PRODUCT_FILE:-/etc/nextgen-product}"
+ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
 
 [ -r "$PRODUCT_FILE" ] || {
     echo "NextGen launcher: missing $PRODUCT_FILE" >&2
