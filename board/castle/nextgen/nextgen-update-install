@@ -16,6 +16,10 @@ PRODUCT="$1"
 PACKAGE="$2"
 case "$PRODUCT" in sound|vibra) ;; *) die "invalid product '$PRODUCT'" ;; esac
 [ -f "$PACKAGE" ] || die "package not found: $PACKAGE"
+[ ! -L "$PACKAGE" ] || die "package must not be a symlink"
+PACKAGE_BYTES="$(wc -c < "$PACKAGE")"
+[ "$PACKAGE_BYTES" -le $((140 * 1024 * 1024)) ] ||
+    die "package exceeds 140 MiB archive limit"
 
 PACKAGE_DIR="$(dirname "$PACKAGE")"
 PACKAGE_NAME="${PACKAGE##*/}"
@@ -34,15 +38,16 @@ STATE_ROOT="$ROOT/state/$PRODUCT"
 MEMBERS="$STATE_ROOT/.members.tmp"
 MANIFEST_TMP="$STATE_ROOT/.manifest.tmp"
 TARGETS="$STATE_ROOT/.targets.tmp"
+ENTRIES="$STATE_ROOT/.entries.tmp"
 SIG_TMP="$STATE_ROOT/.manifest-signature.tmp"
 PUBLIC_KEY="$ROOT/platform/share/update-public.pem"
 SIGNING_POLICY="$ROOT/platform/share/update-signing-policy"
 STAGE=
-LOCK="$STATE_ROOT/install.lock"
+LOCK="/run/nextgen-update-$PRODUCT.lock"
 
 cleanup()
 {
-    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$SIG_TMP" \
+    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$ENTRIES" "$SIG_TMP" \
         "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
     [ -z "$STAGE" ] || rm -rf "$STAGE"
     rmdir "$LOCK" 2>/dev/null || true
@@ -54,7 +59,7 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 trap cleanup EXIT INT TERM
 
-rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$SIG_TMP" \
+rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$ENTRIES" "$SIG_TMP" \
     "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
 : > "$TARGETS"
 
@@ -85,6 +90,8 @@ done < "$MEMBERS"
 [ "$manifest_count" -eq 1 ] || die "package must contain exactly one manifest"
 unzip -p "$PACKAGE" "$manifest_name" > "$MANIFEST_TMP" ||
     die "cannot extract manifest"
+[ "$(wc -c < "$MANIFEST_TMP")" -le $((64 * 1024)) ] ||
+    die "manifest exceeds 64 KiB limit"
 
 digest_from_name()
 {
@@ -108,6 +115,8 @@ case "$policy" in
         [ "$signature_count" -eq 1 ] || die "signed bundle requires exactly one manifest.sig"
         unzip -p "$PACKAGE" manifest.sig > "$SIG_TMP" ||
             die "cannot extract manifest signature"
+        [ "$(wc -c < "$SIG_TMP")" -eq 64 ] ||
+            die "invalid Ed25519 signature length"
         openssl pkeyutl -verify -pubin -inkey "$PUBLIC_KEY" -rawin \
             -in "$MANIFEST_TMP" -sigfile "$SIG_TMP" >/dev/null 2>&1 ||
             die "manifest signature verification failed"
@@ -133,7 +142,8 @@ IFS=' ' read -r magic format bundle_product version extra < "$MANIFEST_TMP" ||
 [ "$format" = "3" ] || die "unsupported bundle format $format"
 [ "$bundle_product" = "$PRODUCT" ] || die "bundle is for $bundle_product, not $PRODUCT"
 case "$version" in ''|*[!0-9]*) die "invalid bundle version" ;; esac
-[ "$version" -gt 0 ] || die "invalid bundle version"
+[ "$version" -gt 0 ] && [ "$version" -le 2147483647 ] ||
+    die "invalid bundle version"
 [ -z "$extra" ] || die "invalid manifest header"
 
 ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
@@ -143,6 +153,17 @@ case "$ACTIVE" in
     factory) OLD=factory; NEW=slotA ;;
     *) die "active application slot is not initialised" ;;
 esac
+
+ACTIVE_INFO="$APP_ROOT/$ACTIVE/bundle.info"
+[ -r "$ACTIVE_INFO" ] || die "active slot has no bundle metadata"
+current_format="$(sed -n 's/^format=//p' "$ACTIVE_INFO")"
+current_product="$(sed -n 's/^product=//p' "$ACTIVE_INFO")"
+current_version="$(sed -n 's/^version=//p' "$ACTIVE_INFO")"
+[ "$current_format" = 3 ] || die "active slot has unsupported bundle format"
+[ "$current_product" = "$PRODUCT" ] || die "active slot product metadata mismatch"
+case "$current_version" in ''|*[!0-9]*) die "active slot has invalid version metadata" ;; esac
+[ "$version" -gt "$current_version" ] ||
+    die "bundle version $version is not newer than active version $current_version"
 
 STAGE="$APP_ROOT/.$NEW.staging"
 rm -rf "$STAGE"
@@ -165,7 +186,8 @@ valid_target()
     return 0
 }
 
-tail -n +2 "$MANIFEST_TMP" |
+sed '1d' "$MANIFEST_TMP" > "$ENTRIES"
+total_payload_bytes=0
 while IFS=' ' read -r source target mode expected_sha256 extra_line; do
     [ -n "$source" ] || die "empty manifest entry"
     [ -z "$extra_line" ] || die "invalid manifest entry"
@@ -196,10 +218,14 @@ while IFS=' ' read -r source target mode expected_sha256 extra_line; do
     [ "$actual_sha256" = "$expected_sha256" ] ||
         die "payload SHA-256 mismatch: $source"
 
+    payload_bytes="$(wc -c < "$dest.tmp")"
+    total_payload_bytes=$((total_payload_bytes + payload_bytes))
+    [ "$total_payload_bytes" -le $((128 * 1024 * 1024)) ] ||
+        die "uncompressed bundle exceeds 128 MiB"
+
     chmod "$mode" "$dest.tmp"
     mv -f "$dest.tmp" "$dest"
-done
-
+done < "$ENTRIES"
 entry_count="$(($(wc -l < "$MANIFEST_TMP") - 1))"
 [ "$entry_count" -ge 2 ] || die "bundle has too few payloads"
 [ "$((entry_count + 1 + signature_count))" -eq "$member_count" ] ||
@@ -210,9 +236,6 @@ if [ "$PRODUCT" = sound ]; then
     [ -r "$STAGE/BaseHPD/hpdc.csv" ] || die "sound bundle has no HPD database"
 fi
 
-total_bytes="$(du -sk "$STAGE" | awk '{print $1}')"
-[ "$total_bytes" -le $((128 * 1024)) ] ||
-    die "uncompressed bundle exceeds 128 MiB"
 
 cat > "$STAGE/bundle.info" <<EOF
 format=3
