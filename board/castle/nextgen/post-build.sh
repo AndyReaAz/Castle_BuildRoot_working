@@ -81,17 +81,24 @@ else
     echo "NextGen kernel modules: none for this kernel profile"
 fi
 
-# This branch renamed the application service from S55NextGen to S00NextGen.
-# Buildroot output trees are incremental and overlay rsync does not remove a
-# file that disappeared from the overlay, so explicitly remove the obsolete
-# service and restage the early-boot files on every image build.
-rm -f "$TARGET_DIR/etc/init.d/S55NextGen"
+# The platform owns the launcher and helper tools. The old /root/Exec layout
+# must not leak into an incremental Buildroot output tree.
+rm -f "$TARGET_DIR/etc/init.d/S55NextGen" "$TARGET_DIR/root/NextGen"
+rm -rf "$TARGET_DIR/root/Exec"
 install -m 0755 "$SCRIPT_DIR/rootfs-overlay/etc/init.d/S00NextGen" \
     "$TARGET_DIR/etc/init.d/S00NextGen"
-install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/startup.sh" \
+install -m 0755 "$SCRIPT_DIR/nextgen-launcher.sh" \
     "$TARGET_DIR/root/startup.sh"
 install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/Exec/fwenv.sh" \
-    "$TARGET_DIR/root/Exec/fwenv.sh"
+    "$PLATFORM_BIN/fwenv.sh"
+install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/Exec/usb-gadget-common.sh" \
+    "$PLATFORM_BIN/usb-gadget-common.sh"
+install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/Exec/usbcontrol.sh" \
+    "$PLATFORM_BIN/usbcontrol.sh"
+install -m 0755 "$SCRIPT_DIR/nextgen-update-install" \
+    "$PLATFORM_BIN/nextgen-update-install"
+install -m 0755 "$SCRIPT_DIR/nextgen-update-accept" \
+    "$PLATFORM_BIN/nextgen-update-accept"
 
 # NextGen owns when NTP synchronisation is allowed (manual "Sync now" and the
 # Auto Time Sync setting). Keep chronyd/chronyc installed, but do not start the
@@ -280,23 +287,15 @@ for connection in "$TARGET_DIR"/etc/NetworkManager/system-connections/*.nmconnec
     chmod 0600 "$connection"
 done
 
-for name in Arial.ttf NotoSansCJKtc-Regular.ttf Translations.csv ionicons.ttf open-iconic.ttf; do
-    [ ! -e "$COMMON_RUNTIME/$name" ] || cp -L "$COMMON_RUNTIME/$name" "$EXEC_DIR/$name"
+# Shared fonts are platform-owned and do not participate in application slot
+# switching. Release-dependent translations live beside the executable.
+for name in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
+    [ ! -e "$COMMON_RUNTIME/$name" ] || install -m 0644 "$COMMON_RUNTIME/$name" "$PLATFORM_SHARE/$name"
 done
 
 case "$PRODUCT" in
     sound)
         APP_BINARY="$APP_DIR/Application/build/sound/bin/NextGen"
-        if [ -d "$COMMON_RUNTIME/Templates" ]; then
-            rm -rf "$EXEC_DIR/Templates"
-            mkdir -p "$EXEC_DIR/Templates"
-            cp -aL "$COMMON_RUNTIME/Templates/." "$EXEC_DIR/Templates/"
-        fi
-        [ ! -f "$COMMON_RUNTIME/FacCalFile.dat" ] || install -m 0644 "$COMMON_RUNTIME/FacCalFile.dat" "$EXEC_DIR/FacCalFile.dat"
-        if [ -f "$APP_DIR/Application/Files/hpdc.csv" ]; then
-            install -d -m 0755 "$EXEC_DIR/BaseHPD"
-            install -m 0644 "$APP_DIR/Application/Files/hpdc.csv" "$EXEC_DIR/BaseHPD/hpdc.csv"
-        fi
         ;;
     vibra)
         APP_BINARY="$APP_DIR/Application/build/vibra/bin/NextGen"
@@ -313,9 +312,7 @@ if [ ! -x "$APP_BINARY" ]; then
 fi
 
 # Never silently package an older application binary after switching branches
-# or changing startup/UI code.  The application remains a separate build, but
-# an image build now fails loudly if any maintained application source is newer
-# than the binary being staged.
+# or changing startup/UI code.
 STALE_SOURCE="$(
     find "$APP_DIR/Application" "$APP_DIR/LicenceGenerator/FirmwareReference" \
         -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' \) \
@@ -328,7 +325,61 @@ if [ -n "$STALE_SOURCE" ]; then
     exit 1
 fi
 
-install -m 0755 "$APP_BINARY" "$TARGET_DIR/root/NextGen"
+APP_VERSION="$(
+    awk '/^[[:space:]]*#define[[:space:]]+VERSION[[:space:]]+[0-9]+/{print $3; exit}' \
+        "$APP_DIR/Application/Version.h"
+)"
+case "$APP_VERSION" in
+    ''|*[!0-9]*) echo "error: cannot determine application VERSION" >&2; exit 1 ;;
+esac
+
+SLOT_A="$APP_REALM/slotA"
+FACTORY="$APP_REALM/factory"
+mkdir -p "$SLOT_A" "$FACTORY"
+
+install -m 0755 "$APP_BINARY" "$SLOT_A/NextGen"
+install -m 0755 "$APP_BINARY" "$FACTORY/NextGen"
+install -m 0644 "$APP_DIR/Application/Files/Translations.csv" "$SLOT_A/Translations.csv"
+install -m 0644 "$APP_DIR/Application/Files/Translations.csv" "$FACTORY/Translations.csv"
+
+if [ "$PRODUCT" = "sound" ]; then
+    [ -f "$APP_DIR/Application/Files/hpdc.csv" ] || {
+        echo "error: sound HPD database is missing" >&2
+        exit 1
+    }
+    mkdir -p "$SLOT_A/BaseHPD" "$FACTORY/BaseHPD"
+    install -m 0644 "$APP_DIR/Application/Files/hpdc.csv" "$SLOT_A/BaseHPD/hpdc.csv"
+    install -m 0644 "$APP_DIR/Application/Files/hpdc.csv" "$FACTORY/BaseHPD/hpdc.csv"
+
+    if [ -d "$COMMON_RUNTIME/Templates" ]; then
+        mkdir -p "$DATA_REALM/Templates"
+        cp -aL "$COMMON_RUNTIME/Templates/." "$DATA_REALM/Templates/"
+    fi
+    [ ! -f "$COMMON_RUNTIME/FacCalFile.dat" ] ||
+        install -m 0644 "$COMMON_RUNTIME/FacCalFile.dat" "$DATA_REALM/FacCalFile.dat"
+fi
+
+for slot in "$SLOT_A" "$FACTORY"; do
+    cat > "$slot/bundle.info" <<EOF
+format=2
+product=$PRODUCT
+version=$APP_VERSION
+EOF
+done
+
+ln -s slotA "$APP_REALM/active"
+ln -s slotA "$APP_REALM/previous"
+printf 'slotA %s\n' "$APP_VERSION" > "$STATE_REALM/accepted"
+
+# Make the initial image durable and self-consistent before filesystem packing.
+[ -x "$APP_REALM/active/NextGen" ] ||
+    { echo "error: active application slot is invalid" >&2; exit 1; }
+[ -r "$APP_REALM/active/Translations.csv" ] ||
+    { echo "error: active application translations are missing" >&2; exit 1; }
+[ -x "$PLATFORM_BIN/nextgen-update-install" ] ||
+    { echo "error: application slot installer is missing" >&2; exit 1; }
+[ -x "$PLATFORM_BIN/nextgen-update-accept" ] ||
+    { echo "error: application slot acceptor is missing" >&2; exit 1; }
 
 
 # Development images deliberately keep a password login recovery path.
