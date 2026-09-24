@@ -18,6 +18,7 @@ APP_ROOT="$ROOT/app/$PRODUCT"
 STATE_ROOT="$ROOT/state/$PRODUCT"
 PENDING="$STATE_ROOT/pending"
 BOOTING="$STATE_ROOT/booting"
+ROLLBACK="$STATE_ROOT/rollback"
 
 mkdir -p "$STATE_ROOT"
 
@@ -48,10 +49,19 @@ atomic_link()
 {
     target="$1"
     link="$2"
-    tmp="$APP_ROOT/.link.$$"
+    tmp="$APP_ROOT/.link.$"
     rm -f "$tmp"
     ln -s "$target" "$tmp"
     mv -Tf "$tmp" "$link"
+    sync
+}
+
+mark_rollback()
+{
+    printf '%s\n' rollback > "$STATE_ROOT/.rollback.$"
+    sync
+    mv -f "$STATE_ROOT/.rollback.$" "$ROLLBACK"
+    rm -f "$PENDING" "$BOOTING"
     sync
 }
 
@@ -66,12 +76,10 @@ if [ -f "$PENDING" ]; then
 
     if ! valid_update_slot "$new" || ! valid_app_ref "$old" || [ -n "$extra" ]; then
         echo "NextGen launcher: discarding malformed pending update"
-        rm -f "$PENDING" "$BOOTING"
-        sync
+        mark_rollback
     elif [ "$ACTIVE" != "$new" ]; then
         echo "NextGen launcher: incomplete slot switch, keeping $ACTIVE"
-        rm -f "$PENDING" "$BOOTING"
-        sync
+        mark_rollback
     else
         BOOT_SLOT="$(cat "$BOOTING" 2>/dev/null || true)"
         ACCEPTED="$(cat "$STATE_ROOT/accepted" 2>/dev/null || true)"
@@ -87,8 +95,7 @@ if [ -f "$PENDING" ]; then
                 atomic_link "$new" "$APP_ROOT/previous"
                 atomic_link "$old" "$APP_ROOT/active"
                 ACTIVE="$old"
-                rm -f "$PENDING" "$BOOTING"
-                sync
+                mark_rollback
             else
                 echo "NextGen launcher: previous slot $old is invalid; retaining $new" >&2
                 rm -f "$BOOTING"
@@ -122,8 +129,12 @@ if slot_app_valid factory; then
     echo "NextGen launcher: both update slots invalid; recovering factory image"
     atomic_link factory "$APP_ROOT/active"
     atomic_link factory "$APP_ROOT/previous"
-    rm -f "$PENDING" "$BOOTING"
-    sync
+    if [ -f "$PENDING" ]; then
+        mark_rollback
+    else
+        rm -f "$BOOTING"
+        sync
+    fi
     exec "$APP_ROOT/active/NextGen"
 fi
 
