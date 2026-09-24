@@ -10,6 +10,13 @@ die()
     exit 1
 }
 
+find_tool()
+{
+    TOOL="$(command -v "$1" 2>/dev/null || true)"
+    [ -n "$TOOL" ] || die "missing $1"
+    printf '%s\n' "$TOOL"
+}
+
 select_config()
 {
     CMDLINE="$(cat /proc/cmdline 2>/dev/null || true)"
@@ -75,11 +82,13 @@ case "$ACTION" in
         printf '%s\n' "$CONFIG"
         ;;
     print)
-        exec /usr/bin/fw_printenv -c "$CONFIG" "$@"
+        FW_PRINTENV="$(find_tool fw_printenv)"
+        exec "$FW_PRINTENV" -c "$CONFIG" "$@"
         ;;
     set)
         [ "$#" -ge 1 ] || die "set requires a variable name"
-        exec /usr/bin/fw_setenv -c "$CONFIG" "$@"
+        FW_SETENV="$(find_tool fw_setenv)"
+        exec "$FW_SETENV" -c "$CONFIG" "$@"
         ;;
     *)
         die "unknown action: $ACTION"
