@@ -88,8 +88,7 @@ cleanup_download()
                 # The download is still complete and verified; make it
                 # deliberately retryable regardless of where power failed in
                 # the previous applying-state update.
-                printf 'ready:%s\n' "$cleanup_version" >
-                    "$package_dir/.status.nextgen.tmp" || return 1
+                printf 'ready:%s\n' "$cleanup_version" > "$package_dir/.status.nextgen.tmp" || return 1
                 sync
                 mv -f "$package_dir/.status.nextgen.tmp" "$status" || return 1
             else
