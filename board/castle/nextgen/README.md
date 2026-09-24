@@ -116,14 +116,15 @@ files and mutable instrument state:
 ```text
 /opt/nextgen/
   platform/bin/            Buildroot-owned helpers
-  platform/share/          shared fonts and update verification policy/key
+  platform/share/          update verification policy/key
+  common/share/            realm-independent fonts/assets
+  common/state/            realm-independent writable state (engmode, crash log)
   app/<sound|vibra>/
     slotA/                 update slot
     slotB/                 update slot, created on first routine update
     factory/               image-built recovery copy
     active -> slotA
     previous -> slotA
-  data/common/             mutable state shared across application realms
   data/<sound|vibra>/      settings, calibration, templates, FTP queue
   state/platform/          platform transaction state
   state/<sound|vibra>/     update/rollback state
