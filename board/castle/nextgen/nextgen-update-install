@@ -1,0 +1,192 @@
+#!/bin/sh
+set -eu
+
+die()
+{
+    echo "NextGen update: $*" >&2
+    exit 1
+}
+
+[ "$#" -eq 2 ] || {
+    echo "Usage: $0 <sound|vibra> <package.zip>" >&2
+    exit 2
+}
+
+PRODUCT="$1"
+PACKAGE="$2"
+case "$PRODUCT" in sound|vibra) ;; *) die "invalid product '$PRODUCT'" ;; esac
+[ -f "$PACKAGE" ] || die "package not found: $PACKAGE"
+
+ROOT=/opt/nextgen
+APP_ROOT="$ROOT/app/$PRODUCT"
+STATE_ROOT="$ROOT/state/$PRODUCT"
+MEMBERS="$STATE_ROOT/.members.$$"
+MANIFEST_TMP="$STATE_ROOT/.manifest.$$"
+TARGETS="$STATE_ROOT/.targets.$$"
+STAGE=
+
+cleanup()
+{
+    rm -f "$MEMBERS" "$MANIFEST_TMP" "$TARGETS" "$STATE_ROOT/.pending.$$" "$STATE_ROOT/.install-progress.$$"
+    [ -z "$STAGE" ] || rm -rf "$STAGE"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$APP_ROOT" "$STATE_ROOT"
+: > "$TARGETS"
+
+unzip -Z1 "$PACKAGE" > "$MEMBERS" || die "cannot read package directory"
+
+member_count=0
+manifest_count=0
+manifest_name=
+while IFS= read -r member; do
+    [ -n "$member" ] || die "empty archive member"
+    case "$member" in
+        */*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid archive member: $member" ;;
+    esac
+    member_count=$((member_count + 1))
+    [ "$member_count" -le 129 ] || die "too many archive members"
+    case "$member" in
+        manifest_V*_*.txt)
+            manifest_count=$((manifest_count + 1))
+            manifest_name="$member"
+            ;;
+    esac
+done < "$MEMBERS"
+
+[ "$manifest_count" -eq 1 ] || die "package must contain exactly one manifest"
+unzip -p "$PACKAGE" "$manifest_name" > "$MANIFEST_TMP" ||
+    die "cannot extract manifest"
+
+digest_from_name()
+{
+    base="$1"
+    stem="${base%.*}"
+    expected="${stem##*_}"
+    [ "${#expected}" -eq 32 ] || return 1
+    case "$expected" in *[!0-9A-Fa-f]*) return 1 ;; esac
+    printf '%s\n' "$expected" | tr 'A-F' 'a-f'
+}
+
+manifest_md5="$(digest_from_name "$manifest_name")" ||
+    die "manifest filename has no valid digest"
+actual_md5="$(md5sum "$MANIFEST_TMP" | awk '{print $1}')"
+[ "$manifest_md5" = "$actual_md5" ] || die "manifest digest mismatch"
+
+magic=
+format=
+bundle_product=
+version=
+extra=
+IFS=' ' read -r magic format bundle_product version extra < "$MANIFEST_TMP" ||
+    die "cannot read manifest header"
+[ "$magic" = "NEXTGEN_APP_BUNDLE" ] || die "unsupported manifest"
+[ "$format" = "2" ] || die "unsupported bundle format $format"
+[ "$bundle_product" = "$PRODUCT" ] || die "bundle is for $bundle_product, not $PRODUCT"
+case "$version" in ''|*[!0-9]*) die "invalid bundle version" ;; esac
+[ "$version" -gt 0 ] || die "invalid bundle version"
+[ -z "$extra" ] || die "invalid manifest header"
+
+ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
+case "$ACTIVE" in
+    slotA) OLD=slotA; NEW=slotB ;;
+    slotB) OLD=slotB; NEW=slotA ;;
+    *) die "active application slot is not initialised" ;;
+esac
+
+STAGE="$APP_ROOT/.$NEW.staging.$$"
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+
+valid_target()
+{
+    value="$1"
+    case "$value" in
+        ''|/*|*\\*|*//*|*[!A-Za-z0-9_./-]*) return 1 ;;
+    esac
+    oldifs="$IFS"
+    IFS='/'
+    set -- $value
+    IFS="$oldifs"
+    [ "$#" -ge 1 ] && [ "$#" -le 4 ] || return 1
+    for part in "$@"; do
+        [ -n "$part" ] && [ "$part" != "." ] && [ "$part" != ".." ] || return 1
+    done
+    return 0
+}
+
+tail -n +2 "$MANIFEST_TMP" |
+while IFS=' ' read -r source target mode extra_line; do
+    [ -n "$source" ] || die "empty manifest entry"
+    [ -z "$extra_line" ] || die "invalid manifest entry"
+    case "$source" in */*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid source member: $source" ;; esac
+    valid_target "$target" || die "invalid slot target: $target"
+    case "$mode" in 0644|0755) ;; *) die "invalid target mode: $mode" ;; esac
+
+    [ "$(grep -Fxc "$source" "$MEMBERS")" -eq 1 ] ||
+        die "manifest member missing or duplicated: $source"
+    if grep -Fqx "$target" "$TARGETS"; then
+        die "duplicate slot target: $target"
+    fi
+    printf '%s\n' "$target" >> "$TARGETS"
+
+    expected="$(digest_from_name "$source")" ||
+        die "payload filename has no valid digest: $source"
+
+    dest="$STAGE/$target"
+    mkdir -p "$(dirname "$dest")"
+    unzip -p "$PACKAGE" "$source" > "$dest.tmp" ||
+        die "cannot extract $source"
+    actual="$(md5sum "$dest.tmp" | awk '{print $1}')"
+    [ "$actual" = "$expected" ] || die "payload digest mismatch: $source"
+
+    chmod "$mode" "$dest.tmp"
+    mv -f "$dest.tmp" "$dest"
+done
+
+entry_count="$(($(wc -l < "$MANIFEST_TMP") - 1))"
+[ "$entry_count" -ge 2 ] || die "bundle has too few payloads"
+[ "$((entry_count + 1))" -eq "$member_count" ] ||
+    die "archive contains files not declared by the manifest"
+[ -x "$STAGE/NextGen" ] || die "bundle has no executable NextGen"
+[ -r "$STAGE/Translations.csv" ] || die "bundle has no Translations.csv"
+if [ "$PRODUCT" = sound ]; then
+    [ -r "$STAGE/BaseHPD/hpdc.csv" ] || die "sound bundle has no HPD database"
+fi
+
+total_bytes="$(du -sk "$STAGE" | awk '{print $1}')"
+[ "$total_bytes" -le $((128 * 1024)) ] ||
+    die "uncompressed bundle exceeds 128 MiB"
+
+cat > "$STAGE/bundle.info" <<EOF
+format=2
+product=$PRODUCT
+version=$version
+EOF
+
+sync
+
+# Publish the completed inactive slot as one same-filesystem directory rename.
+# A loss of power before this point cannot affect the active application.
+rm -rf "$APP_ROOT/$NEW"
+mv "$STAGE" "$APP_ROOT/$NEW"
+STAGE=
+sync
+
+# Record the rollback intent durably before changing the active symlink.
+rm -f "$APP_ROOT/.previous.$$" "$APP_ROOT/.active.$$"
+ln -s "$OLD" "$APP_ROOT/.previous.$$"
+mv -Tf "$APP_ROOT/.previous.$$" "$APP_ROOT/previous"
+
+printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.$$"
+sync
+mv -f "$STATE_ROOT/.pending.$$" "$STATE_ROOT/pending"
+rm -f "$STATE_ROOT/booting"
+sync
+
+ln -s "$NEW" "$APP_ROOT/.active.$$"
+mv -Tf "$APP_ROOT/.active.$$" "$APP_ROOT/active"
+sync
+
+echo "NextGen update: installed $PRODUCT version $version into $NEW; reboot required"
