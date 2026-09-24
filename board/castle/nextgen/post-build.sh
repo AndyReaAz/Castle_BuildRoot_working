@@ -87,7 +87,7 @@ rm -f "$TARGET_DIR/etc/init.d/S55NextGen" "$TARGET_DIR/root/NextGen"
 rm -rf "$TARGET_DIR/root/Exec"
 install -m 0755 "$SCRIPT_DIR/rootfs-overlay/etc/init.d/S00NextGen" \
     "$TARGET_DIR/etc/init.d/S00NextGen"
-install -m 0755 "$SCRIPT_DIR/nextgen-launcher.sh" \
+install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/startup.sh" \
     "$TARGET_DIR/root/startup.sh"
 install -m 0755 "$SCRIPT_DIR/rootfs-overlay/root/Exec/fwenv.sh" \
     "$PLATFORM_BIN/fwenv.sh"
