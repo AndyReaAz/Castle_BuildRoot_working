@@ -162,6 +162,8 @@ current_version="$(sed -n 's/^version=//p' "$ACTIVE_INFO")"
 [ "$current_format" = 3 ] || die "active slot has unsupported bundle format"
 [ "$current_product" = "$PRODUCT" ] || die "active slot product metadata mismatch"
 case "$current_version" in ''|*[!0-9]*) die "active slot has invalid version metadata" ;; esac
+[ "$current_version" -gt 0 ] && [ "$current_version" -le 2147483647 ] ||
+    die "active slot has invalid version metadata"
 [ "$version" -gt "$current_version" ] ||
     die "bundle version $version is not newer than active version $current_version"
 
@@ -172,8 +174,9 @@ mkdir -p "$STAGE"
 valid_target()
 {
     value="$1"
+    [ "${#value}" -le 200 ] || return 1
     case "$value" in
-        ''|/*|*\\*|*//*|*[!A-Za-z0-9_./-]*) return 1 ;;
+        ''|/*|*\\*|*//*|*[!A-Za-z0-9_./-]|bundle.info) return 1 ;;
     esac
     oldifs="$IFS"
     IFS='/'
@@ -181,7 +184,8 @@ valid_target()
     IFS="$oldifs"
     [ "$#" -ge 1 ] && [ "$#" -le 4 ] || return 1
     for part in "$@"; do
-        [ -n "$part" ] && [ "$part" != "." ] && [ "$part" != ".." ] || return 1
+        [ -n "$part" ] && [ "$part" != "." ] && [ "$part" != ".." ] &&
+            [ "${#part}" -le 100 ] || return 1
     done
     return 0
 }
