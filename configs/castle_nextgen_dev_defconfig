@@ -119,6 +119,9 @@ BR2_TARGET_ROOTFS_UBIFS_MINIOSIZE=0x800
 BR2_TARGET_ROOTFS_UBIFS_MAXLEBCNT=1000
 BR2_TARGET_ROOTFS_UBIFS_RT_LZO=y
 # Host tools used directly by the NextGen post-build/post-image hooks.
+# Do not explicitly select host GDB, QEMU, DTC or Python feature bundles here.
+# Buildroot may still pull a minimal host Python/DTC/etc. transitively when a
+# selected package genuinely requires it.
 BR2_PACKAGE_HOST_DOSFSTOOLS=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_HOST_KMOD=y
