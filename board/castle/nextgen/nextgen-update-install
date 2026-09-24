@@ -21,10 +21,11 @@ PACKAGE_BYTES="$(wc -c < "$PACKAGE")"
 [ "$PACKAGE_BYTES" -le $((140 * 1024 * 1024)) ] ||
     die "package exceeds 140 MiB archive limit"
 
+SDCARD_ROOT="${NEXTGEN_SDCARD_ROOT:-/sdcard}"
 PACKAGE_DIR="$(dirname "$PACKAGE")"
 PACKAGE_NAME="${PACKAGE##*/}"
 case "$PACKAGE_DIR" in
-    /sdcard/public|/sdcard/temp/TempFirmware) ;;
+    "$SDCARD_ROOT/public"|"$SDCARD_ROOT/temp/TempFirmware") ;;
     *) die "update package is outside an approved staging directory" ;;
 esac
 case "$PACKAGE_NAME" in
@@ -32,7 +33,9 @@ case "$PACKAGE_NAME" in
 esac
 case "$PACKAGE_NAME" in *.zip) ;; *) die "update package is not a ZIP" ;; esac
 
-ROOT=/opt/nextgen
+# Production defaults remain fixed; host-side tests override these roots.
+ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
+RUN_ROOT="${NEXTGEN_RUN_ROOT:-/run}"
 APP_ROOT="$ROOT/app/$PRODUCT"
 STATE_ROOT="$ROOT/state/$PRODUCT"
 MEMBERS="$STATE_ROOT/.members.tmp"
@@ -43,7 +46,7 @@ SIG_TMP="$STATE_ROOT/.manifest-signature.tmp"
 PUBLIC_KEY="$ROOT/platform/share/update-public.pem"
 SIGNING_POLICY="$ROOT/platform/share/update-signing-policy"
 STAGE=
-LOCK="/run/nextgen-update-$PRODUCT.lock"
+LOCK="$RUN_ROOT/nextgen-update-$PRODUCT.lock"
 
 cleanup()
 {
@@ -53,7 +56,7 @@ cleanup()
     rmdir "$LOCK" 2>/dev/null || true
 }
 
-mkdir -p "$APP_ROOT" "$STATE_ROOT"
+mkdir -p "$APP_ROOT" "$STATE_ROOT" "$RUN_ROOT"
 if ! mkdir "$LOCK" 2>/dev/null; then
     die "another application install is already in progress"
 fi
