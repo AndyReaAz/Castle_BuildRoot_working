@@ -78,6 +78,8 @@ while IFS= read -r member; do
     [ -n "$member" ] || die "empty archive member"
     case "$member" in
         */*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid archive member: $member" ;;
+        [A-Za-z0-9]*) ;;
+        *) die "archive member must start alphanumeric: $member" ;;
     esac
     member_count=$((member_count + 1))
     [ "$member_count" -le 130 ] || die "too many archive members"
@@ -191,6 +193,7 @@ valid_target()
     for part in "$@"; do
         [ -n "$part" ] && [ "$part" != "." ] && [ "$part" != ".." ] &&
             [ "${#part}" -le 100 ] || return 1
+        case "$part" in [A-Za-z0-9]*) ;; *) return 1 ;; esac
     done
     return 0
 }
@@ -203,7 +206,11 @@ while IFS=' ' read -r source target mode expected_sha256 extra_line; do
     [ "${#expected_sha256}" -eq 64 ] || die "invalid SHA-256 in manifest"
     case "$expected_sha256" in *[!0-9A-Fa-f]*) die "invalid SHA-256 in manifest" ;; esac
     expected_sha256="$(printf '%s' "$expected_sha256" | tr 'A-F' 'a-f')"
-    case "$source" in */*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid source member: $source" ;; esac
+    case "$source" in
+        */*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid source member: $source" ;;
+        [A-Za-z0-9]*) ;;
+        *) die "source member must start alphanumeric: $source" ;;
+    esac
     valid_target "$target" || die "invalid slot target: $target"
     case "$mode" in 0644|0755) ;; *) die "invalid target mode: $mode" ;; esac
 
