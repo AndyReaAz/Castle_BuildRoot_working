@@ -202,11 +202,11 @@ mv -Tf "$APP_ROOT/.previous.tmp" "$APP_ROOT/previous"
 
 printf '%s %s\n' "$version" "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
 sync
-mv -f "$STATE_ROOT/.cleanup.$" "$STATE_ROOT/cleanup"
+mv -f "$STATE_ROOT/.cleanup.tmp" "$STATE_ROOT/cleanup"
 
 printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.tmp"
 sync
-mv -f "$STATE_ROOT/.pending.$" "$STATE_ROOT/pending"
+mv -f "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/pending"
 rm -f "$STATE_ROOT/booting" "$STATE_ROOT/rollback"
 sync
 
