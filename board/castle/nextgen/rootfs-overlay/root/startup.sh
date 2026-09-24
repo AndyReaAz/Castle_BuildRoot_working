@@ -77,35 +77,86 @@ if [ -f "$PENDING" ]; then
     if ! valid_update_slot "$new" || ! valid_app_ref "$old" || [ -n "$extra" ]; then
         echo "NextGen launcher: discarding malformed pending update"
         mark_rollback
-    elif [ "$ACTIVE" != "$new" ]; then
-        echo "NextGen launcher: incomplete slot switch, keeping $ACTIVE"
-        mark_rollback
     else
+        ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
         BOOT_SLOT="$(cat "$BOOTING" 2>/dev/null || true)"
         ACCEPTED="$(cat "$STATE_ROOT/accepted" 2>/dev/null || true)"
-        if [ "$ACCEPTED" = "$new $version" ]; then
-            # The application durably accepted the new slot but power may have
-            # disappeared before it could clear the transient files.
+
+        if [ "$ACCEPTED" = "$new $version" ] && [ "$ACTIVE" = "$new" ]; then
+            # Acceptance was durable; only transient cleanup was interrupted.
             echo "NextGen launcher: finalising accepted slot $new version $version"
-            rm -f "$PENDING" "$BOOTING"
+            rm -f "$PENDING" "$BOOTING" "$ROLLBACK"
             sync
-        elif [ "$BOOT_SLOT" = "$new" ]; then
-            if slot_app_valid "$old"; then
-                echo "NextGen launcher: update $version failed acceptance; rolling back $new -> $old"
-                atomic_link "$new" "$APP_ROOT/previous"
-                atomic_link "$old" "$APP_ROOT/active"
-                ACTIVE="$old"
-                mark_rollback
+
+        elif [ "$ACTIVE" = "$old" ]; then
+            # Normal first boot after installation: old release is still live.
+            if slot_app_valid "$new" && slot_app_valid "$old"; then
+                atomic_link "$old" "$APP_ROOT/previous"
+                atomic_link "$new" "$APP_ROOT/active"
+                printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
+                sync
+                mv -f "$STATE_ROOT/.booting.tmp" "$BOOTING"
+                sync
+                ACTIVE="$new"
+                echo "NextGen launcher: trying pending slot $new version $version"
             else
-                echo "NextGen launcher: previous slot $old is invalid; retaining $new" >&2
-                rm -f "$BOOTING"
+                echo "NextGen launcher: staged or previous slot is invalid; keeping $old"
+                mark_rollback
             fi
+
+        elif [ "$ACTIVE" = "$new" ]; then
+            if [ "$BOOT_SLOT" = "$new" ]; then
+                # The candidate was already launched once and never accepted.
+                if slot_app_valid "$old"; then
+                    echo "NextGen launcher: update $version failed acceptance; rolling back $new -> $old"
+                    atomic_link "$new" "$APP_ROOT/previous"
+                    atomic_link "$old" "$APP_ROOT/active"
+                    ACTIVE="$old"
+                    mark_rollback
+                elif slot_app_valid factory; then
+                    echo "NextGen launcher: previous slot invalid; rolling back candidate to factory"
+                    atomic_link factory "$APP_ROOT/active"
+                    atomic_link factory "$APP_ROOT/previous"
+                    ACTIVE=factory
+                    mark_rollback
+                else
+                    echo "NextGen launcher: no rollback image is valid; retaining candidate" >&2
+                    rm -f "$BOOTING"
+                fi
+            else
+                # Power disappeared after the active rename but before the
+                # first-boot marker was durable. Treat this as the first try.
+                if slot_app_valid "$new"; then
+                    printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
+                    sync
+                    mv -f "$STATE_ROOT/.booting.tmp" "$BOOTING"
+                    sync
+                    echo "NextGen launcher: resuming first try of slot $new version $version"
+                else
+                    echo "NextGen launcher: candidate became invalid before first boot"
+                    if slot_app_valid "$old"; then
+                        atomic_link "$old" "$APP_ROOT/active"
+                        atomic_link "$old" "$APP_ROOT/previous"
+                    fi
+                    mark_rollback
+                fi
+            fi
+
         else
-            printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
-            sync
-            mv -f "$STATE_ROOT/.booting.tmp" "$BOOTING"
-            sync
-            echo "NextGen launcher: trying pending slot $new version $version"
+            # The active pointer does not correspond to either side of the
+            # prepared transaction. Prefer the known previous image, then
+            # factory, and mark the staged update for retry cleanup.
+            echo "NextGen launcher: unexpected active slot '$ACTIVE' during update"
+            if slot_app_valid "$old"; then
+                atomic_link "$old" "$APP_ROOT/active"
+                atomic_link "$old" "$APP_ROOT/previous"
+                ACTIVE="$old"
+            elif slot_app_valid factory; then
+                atomic_link factory "$APP_ROOT/active"
+                atomic_link factory "$APP_ROOT/previous"
+                ACTIVE=factory
+            fi
+            mark_rollback
         fi
     fi
 elif [ -e "$BOOTING" ]; then
