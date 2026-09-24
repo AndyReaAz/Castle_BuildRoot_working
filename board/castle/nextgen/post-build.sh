@@ -287,6 +287,31 @@ for connection in "$TARGET_DIR"/etc/NetworkManager/system-connections/*.nmconnec
     chmod 0600 "$connection"
 done
 
+# Signed routine updates are enabled by supplying only the public verification
+# key to Buildroot. The private signing key never belongs in the image/repo.
+UPDATE_PUBLIC_KEY="${NEXTGEN_UPDATE_PUBLIC_KEY:-}"
+REQUIRE_SIGNED_UPDATES="${NEXTGEN_REQUIRE_SIGNED_UPDATES:-0}"
+case "$REQUIRE_SIGNED_UPDATES" in 0|1) ;; *)
+    echo "error: NEXTGEN_REQUIRE_SIGNED_UPDATES must be 0 or 1" >&2
+    exit 1
+    ;;
+esac
+
+rm -f "$PLATFORM_SHARE/update-public.pem"
+if [ -n "$UPDATE_PUBLIC_KEY" ]; then
+    [ -f "$UPDATE_PUBLIC_KEY" ] && [ ! -L "$UPDATE_PUBLIC_KEY" ] || {
+        echo "error: NEXTGEN_UPDATE_PUBLIC_KEY must name a regular public-key PEM" >&2
+        exit 1
+    }
+    install -m 0644 "$UPDATE_PUBLIC_KEY" "$PLATFORM_SHARE/update-public.pem"
+    printf '%s\n' ed25519-required > "$PLATFORM_SHARE/update-signing-policy"
+elif [ "$REQUIRE_SIGNED_UPDATES" = 1 ]; then
+    echo "error: signed updates required but NEXTGEN_UPDATE_PUBLIC_KEY is unset" >&2
+    exit 1
+else
+    printf '%s\n' unsigned-development > "$PLATFORM_SHARE/update-signing-policy"
+fi
+
 # Shared fonts are platform-owned and do not participate in application slot
 # switching. Release-dependent translations live beside the executable.
 for name in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
