@@ -24,6 +24,8 @@ esac
 ROOT="$TARGET_DIR/opt/nextgen"
 APP="$ROOT/app/$PRODUCT"
 DATA="$ROOT/data/$PRODUCT"
+COMMON_SHARE="$ROOT/common/share"
+COMMON_STATE="$ROOT/common/state"
 STATE="$ROOT/state/$PRODUCT"
 BIN="$ROOT/platform/bin"
 SHARE="$ROOT/platform/share"
@@ -63,10 +65,11 @@ for helper in nextgen-update-install nextgen-update-accept usbcontrol.sh fwenv.s
 done
 
 for font in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf; do
-    [ -r "$SHARE/$font" ] || fail "platform font $font is missing"
+    [ -r "$COMMON_SHARE/$font" ] || fail "platform font $font is missing"
 done
 
 [ -d "$DATA" ] || fail "mutable realm data directory is missing"
+[ -d "$COMMON_STATE" ] || fail "common state directory is missing"
 [ -d "$STATE" ] || fail "realm state directory is missing"
 [ -r "$STATE/accepted" ] || fail "initial accepted-slot record is missing"
 
