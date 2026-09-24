@@ -438,7 +438,7 @@ printf 'slotA %s\n' "$APP_VERSION" > "$STATE_REALM/accepted"
 [ ! -e "$TARGET_DIR/root/NextGen" ] ||
     { echo "error: obsolete /root/NextGen survived image staging" >&2; exit 1; }
 
-"$SCRIPT_DIR/verify-target-layout.sh" "$TARGET_DIR" "$PRODUCT"
+/bin/sh "$SCRIPT_DIR/verify-target-layout.sh" "$TARGET_DIR" "$PRODUCT"
 
 # Development images deliberately keep a password login recovery path.
 # The defconfig sets the root password to "root"; current OpenSSH defaults
