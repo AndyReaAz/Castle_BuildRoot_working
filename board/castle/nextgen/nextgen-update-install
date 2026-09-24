@@ -254,6 +254,16 @@ EOF
 
 sync
 
+# Before recycling the inactive slot, make every fallback pointer refer to the
+# currently active known-good release. This prevents a power cut during slot
+# replacement from leaving "previous" pointing at an unaccepted candidate.
+rm -f "$APP_ROOT/.previous.tmp"
+ln -s "$OLD" "$APP_ROOT/.previous.tmp" ||
+    die "cannot prepare previous-slot link"
+mv -Tf "$APP_ROOT/.previous.tmp" "$APP_ROOT/previous" ||
+    die "cannot publish previous-slot link"
+sync
+
 # Publish the completed inactive slot as one same-filesystem directory rename.
 # A loss of power before this point cannot affect the active application.
 rm -rf "$APP_ROOT/$NEW"
