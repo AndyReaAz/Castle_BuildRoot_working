@@ -403,7 +403,7 @@ fi
 
 for slot in "$SLOT_A" "$FACTORY"; do
     cat > "$slot/bundle.info" <<EOF
-format=2
+format=3
 product=$PRODUCT
 version=$APP_VERSION
 EOF
