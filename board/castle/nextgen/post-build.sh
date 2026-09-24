@@ -116,6 +116,18 @@ if [ -f "$TARGET_DIR/etc/init.d/S45NetworkManager" ]; then
         "$TARGET_DIR/etc/init.d/NetworkManager"
 fi
 
+# The application selects /etc/localtime at runtime from the timezone database.
+# Keep Buildroot's UTC default valid and fail the image build if tzdata has
+# somehow been omitted or /etc/localtime is left dangling.
+[ -r "$TARGET_DIR/usr/share/zoneinfo/Etc/UTC" ] || {
+    echo "error: NextGen timezone database is missing Etc/UTC" >&2
+    exit 1
+}
+[ -e "$TARGET_DIR/etc/localtime" ] || {
+    echo "error: NextGen /etc/localtime is missing or dangling" >&2
+    exit 1
+}
+
 # The USB recovery helper remains installed for manual/serial recovery, but it
 # must not run automatically: the application now waits until settings and
 # engineering state are final, then creates the selected gadget exactly once.
