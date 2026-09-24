@@ -223,11 +223,9 @@ mv "$STAGE" "$APP_ROOT/$NEW"
 STAGE=
 sync
 
-# Record the rollback intent durably before changing the active symlink.
-rm -f "$APP_ROOT/.previous.tmp" "$APP_ROOT/.active.tmp"
-ln -s "$OLD" "$APP_ROOT/.previous.tmp"
-mv -Tf "$APP_ROOT/.previous.tmp" "$APP_ROOT/previous"
-
+# Record the complete staged transaction durably. The running application keeps
+# using the old active slot; the platform launcher performs the single active
+# symlink switch on the following reboot.
 printf '%s %s\n' "$version" "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
 sync
 mv -f "$STATE_ROOT/.cleanup.tmp" "$STATE_ROOT/cleanup"
@@ -238,8 +236,4 @@ mv -f "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/pending"
 rm -f "$STATE_ROOT/booting" "$STATE_ROOT/rollback"
 sync
 
-ln -s "$NEW" "$APP_ROOT/.active.tmp"
-mv -Tf "$APP_ROOT/.active.tmp" "$APP_ROOT/active"
-sync
-
-echo "NextGen update: installed $PRODUCT version $version into $NEW; reboot required"
+echo "NextGen update: staged $PRODUCT version $version in $NEW; reboot required"
