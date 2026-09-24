@@ -30,6 +30,23 @@ KERNEL_PROFILE="${NEXTGEN_KERNEL_PROFILE:-unspecified}"
 printf '%s\n' "$KERNEL_PROFILE" > "$TARGET_DIR/etc/nextgen-kernel-profile"
 printf '%s\n' "$PRODUCT" > "$TARGET_DIR/etc/nextgen-product"
 
+# Fail the image build before staging if any platform-owned shell helper is
+# syntactically invalid. These scripts run under BusyBox ash on the meter and
+# intentionally stay within POSIX sh syntax.
+for script in \
+    "$SCRIPT_DIR/rootfs-overlay/root/startup.sh" \
+    "$SCRIPT_DIR/rootfs-overlay/root/Exec/fwenv.sh" \
+    "$SCRIPT_DIR/rootfs-overlay/root/Exec/usb-gadget-common.sh" \
+    "$SCRIPT_DIR/rootfs-overlay/root/Exec/usbcontrol.sh" \
+    "$SCRIPT_DIR/nextgen-update-install" \
+    "$SCRIPT_DIR/nextgen-update-accept"
+do
+    /bin/sh -n "$script" || {
+        echo "error: invalid NextGen platform script: $script" >&2
+        exit 1
+    }
+done
+
 # Install the complete module tree when this kernel profile produces modules.
 # The LZ4 control kernel is monolithic and legitimately has no module tree.
 EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.6.23-linux4microchip-2024.04+}"
@@ -405,6 +422,16 @@ printf 'slotA %s\n' "$APP_VERSION" > "$STATE_REALM/accepted"
     { echo "error: application slot installer is missing" >&2; exit 1; }
 [ -x "$PLATFORM_BIN/nextgen-update-accept" ] ||
     { echo "error: application slot acceptor is missing" >&2; exit 1; }
+[ -x "$PLATFORM_BIN/usbcontrol.sh" ] ||
+    { echo "error: platform USB helper is missing" >&2; exit 1; }
+[ -x "$PLATFORM_BIN/fwenv.sh" ] ||
+    { echo "error: platform fwenv helper is missing" >&2; exit 1; }
+[ -r "$PLATFORM_SHARE/update-signing-policy" ] ||
+    { echo "error: update signing policy is missing" >&2; exit 1; }
+[ ! -e "$TARGET_DIR/root/Exec" ] ||
+    { echo "error: obsolete /root/Exec survived image staging" >&2; exit 1; }
+[ ! -e "$TARGET_DIR/root/NextGen" ] ||
+    { echo "error: obsolete /root/NextGen survived image staging" >&2; exit 1; }
 
 
 # Development images deliberately keep a password login recovery path.
