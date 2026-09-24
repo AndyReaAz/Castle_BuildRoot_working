@@ -138,7 +138,7 @@ done
 # and the early application owns the splash.
 
 DATA_IMAGE="$BINARIES_DIR/data.ext4"
-DATA_IMAGE_SIZE="${NEXTGEN_DATA_IMAGE_SIZE:-5G}"
+DATA_IMAGE_SIZE="${NEXTGEN_DATA_IMAGE_SIZE:-128M}"
 
 rm -f "$DATA_IMAGE" "$BINARIES_DIR/sdcard.img"
 truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
