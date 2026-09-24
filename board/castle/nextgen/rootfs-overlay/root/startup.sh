@@ -38,11 +38,27 @@ valid_app_ref()
     esac
 }
 
+slot_version()
+{
+    ref="$1"
+    valid_app_ref "$ref" || return 1
+    info="$APP_ROOT/$ref/bundle.info"
+    [ -r "$info" ] || return 1
+    [ "$(sed -n 's/^format=//p' "$info")" = 3 ] || return 1
+    [ "$(sed -n 's/^product=//p' "$info")" = "$PRODUCT" ] || return 1
+    value="$(sed -n 's/^version=//p' "$info")"
+    case "$value" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$value" -gt 0 ] && [ "$value" -le 2147483647 ] || return 1
+    printf '%s\n' "$value"
+}
+
 slot_app_valid()
 {
-    valid_app_ref "$1" &&
-    [ -x "$APP_ROOT/$1/NextGen" ] &&
-    [ -r "$APP_ROOT/$1/Translations.csv" ]
+    ref="$1"
+    slot_version "$ref" >/dev/null 2>&1 &&
+    [ -x "$APP_ROOT/$ref/NextGen" ] &&
+    [ -r "$APP_ROOT/$ref/Translations.csv" ] &&
+    { [ "$PRODUCT" != sound ] || [ -r "$APP_ROOT/$ref/BaseHPD/hpdc.csv" ]; }
 }
 
 atomic_link()
@@ -67,6 +83,14 @@ mark_rollback()
 
 ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
 
+# Once rollback intent is durable it wins over any stale pending/booting files
+# left by a power cut in mark_rollback(). Keep the marker for the application
+# acceptance helper, which repairs the removable-media download state.
+if [ -f "$ROLLBACK" ]; then
+    rm -f "$PENDING" "$BOOTING"
+    sync
+fi
+
 if [ -f "$PENDING" ]; then
     new=
     old=
@@ -74,10 +98,36 @@ if [ -f "$PENDING" ]; then
     extra=
     IFS=' ' read -r new old version extra < "$PENDING" || true
 
-    if ! valid_update_slot "$new" || ! valid_app_ref "$old" || [ -n "$extra" ]; then
+    if ! valid_update_slot "$new" || ! valid_app_ref "$old" ||
+       [ -n "$extra" ]; then
         echo "NextGen launcher: discarding malformed pending update"
+        PREVIOUS="$(readlink "$APP_ROOT/previous" 2>/dev/null || true)"
+        if slot_app_valid "$PREVIOUS"; then
+            atomic_link "$PREVIOUS" "$APP_ROOT/active"
+            ACTIVE="$PREVIOUS"
+        elif slot_app_valid factory; then
+            atomic_link factory "$APP_ROOT/active"
+            atomic_link factory "$APP_ROOT/previous"
+            ACTIVE=factory
+        fi
         mark_rollback
     else
+        case "$version" in ''|*[!0-9]*) version=0 ;; esac
+        candidate_version="$(slot_version "$new" 2>/dev/null || echo 0)"
+        if [ "$version" -le 0 ] || [ "$version" -gt 2147483647 ] ||
+           [ "$candidate_version" != "$version" ]; then
+            echo "NextGen launcher: pending metadata does not match candidate"
+            if slot_app_valid "$old"; then
+                atomic_link "$old" "$APP_ROOT/active"
+                atomic_link "$old" "$APP_ROOT/previous"
+                ACTIVE="$old"
+            elif slot_app_valid factory; then
+                atomic_link factory "$APP_ROOT/active"
+                atomic_link factory "$APP_ROOT/previous"
+                ACTIVE=factory
+            fi
+            mark_rollback
+        else
         ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
         BOOT_SLOT="$(cat "$BOOTING" 2>/dev/null || true)"
         ACCEPTED="$(cat "$STATE_ROOT/accepted" 2>/dev/null || true)"
@@ -157,6 +207,7 @@ if [ -f "$PENDING" ]; then
                 ACTIVE=factory
             fi
             mark_rollback
+        fi
         fi
     fi
 elif [ -e "$BOOTING" ]; then
