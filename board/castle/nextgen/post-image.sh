@@ -138,7 +138,13 @@ done
 # and the early application owns the splash.
 
 DATA_IMAGE="$BINARIES_DIR/data.ext4"
-DATA_IMAGE_SIZE="${NEXTGEN_DATA_IMAGE_SIZE:-5G}"
+# Raw images carry only an empty seed partition. After writing with dd or a
+# Windows imager, use File -> Format Memory on the meter to recreate p3 at
+# full card capacity (erases p3; preserves the SD boot/rootfs partitions).
+# 128 MiB is intentionally below the application's >4 GiB data-size check,
+# so a freshly raw-written card reports a storage warning until prepared.
+# write-sd-card.sh does not use data.ext4: it creates full-size p3 directly.
+DATA_IMAGE_SIZE="${NEXTGEN_DATA_IMAGE_SIZE:-128M}"
 
 rm -f "$DATA_IMAGE" "$BINARIES_DIR/sdcard.img"
 truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
