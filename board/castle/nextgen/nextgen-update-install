@@ -130,7 +130,7 @@ extra=
 IFS=' ' read -r magic format bundle_product version extra < "$MANIFEST_TMP" ||
     die "cannot read manifest header"
 [ "$magic" = "NEXTGEN_APP_BUNDLE" ] || die "unsupported manifest"
-[ "$format" = "2" ] || die "unsupported bundle format $format"
+[ "$format" = "3" ] || die "unsupported bundle format $format"
 [ "$bundle_product" = "$PRODUCT" ] || die "bundle is for $bundle_product, not $PRODUCT"
 case "$version" in ''|*[!0-9]*) die "invalid bundle version" ;; esac
 [ "$version" -gt 0 ] || die "invalid bundle version"
@@ -166,9 +166,12 @@ valid_target()
 }
 
 tail -n +2 "$MANIFEST_TMP" |
-while IFS=' ' read -r source target mode extra_line; do
+while IFS=' ' read -r source target mode expected_sha256 extra_line; do
     [ -n "$source" ] || die "empty manifest entry"
     [ -z "$extra_line" ] || die "invalid manifest entry"
+    [ "${#expected_sha256}" -eq 64 ] || die "invalid SHA-256 in manifest"
+    case "$expected_sha256" in *[!0-9A-Fa-f]*) die "invalid SHA-256 in manifest" ;; esac
+    expected_sha256="$(printf '%s' "$expected_sha256" | tr 'A-F' 'a-f')"
     case "$source" in */*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid source member: $source" ;; esac
     valid_target "$target" || die "invalid slot target: $target"
     case "$mode" in 0644|0755) ;; *) die "invalid target mode: $mode" ;; esac
@@ -188,7 +191,10 @@ while IFS=' ' read -r source target mode extra_line; do
     unzip -p "$PACKAGE" "$source" > "$dest.tmp" ||
         die "cannot extract $source"
     actual="$(md5sum "$dest.tmp" | awk '{print $1}')"
-    [ "$actual" = "$expected" ] || die "payload digest mismatch: $source"
+    [ "$actual" = "$expected" ] || die "payload MD5 envelope mismatch: $source"
+    actual_sha256="$(sha256sum "$dest.tmp" | awk '{print $1}')"
+    [ "$actual_sha256" = "$expected_sha256" ] ||
+        die "payload SHA-256 mismatch: $source"
 
     chmod "$mode" "$dest.tmp"
     mv -f "$dest.tmp" "$dest"
@@ -209,7 +215,7 @@ total_bytes="$(du -sk "$STAGE" | awk '{print $1}')"
     die "uncompressed bundle exceeds 128 MiB"
 
 cat > "$STAGE/bundle.info" <<EOF
-format=2
+format=3
 product=$PRODUCT
 version=$version
 EOF
