@@ -226,6 +226,11 @@ sync
 # Record the complete staged transaction durably. The running application keeps
 # using the old active slot; the platform launcher performs the single active
 # symlink switch on the following reboot.
+# Acceptance belongs to this transaction, not merely a slot/version pair left
+# by an older run. Remove the old proof before publishing the new intent.
+rm -f "$STATE_ROOT/accepted"
+sync
+
 printf '%s %s\n' "$version" "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
 sync
 mv -f "$STATE_ROOT/.cleanup.tmp" "$STATE_ROOT/cleanup"
