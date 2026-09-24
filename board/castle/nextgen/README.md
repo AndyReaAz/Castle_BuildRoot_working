@@ -137,7 +137,7 @@ The application accepts a newly selected slot only after it reaches the normal
 measurement-started milestone. Failure before acceptance causes the next
 launcher invocation to restore `previous`.
 
-Routine update bundles use format 3. They contain only slot-relative release
+Routine update bundles use format 3. Bundle versions must be strictly newer than the active slot; equal-version installs and downgrades are rejected. They contain only slot-relative release
 files, SHA-256 for every payload and, for production, an Ed25519 signature over
 the exact manifest. Platform/kernel/DTB/bootloader changes remain full-image
 work and are deliberately outside the routine updater.
