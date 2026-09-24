@@ -39,7 +39,8 @@ for script in \
     "$SCRIPT_DIR/rootfs-overlay/root/Exec/usb-gadget-common.sh" \
     "$SCRIPT_DIR/rootfs-overlay/root/Exec/usbcontrol.sh" \
     "$SCRIPT_DIR/nextgen-update-install" \
-    "$SCRIPT_DIR/nextgen-update-accept"
+    "$SCRIPT_DIR/nextgen-update-accept" \
+    "$SCRIPT_DIR/verify-target-layout.sh"
 do
     /bin/sh -n "$script" || {
         echo "error: invalid NextGen platform script: $script" >&2
@@ -435,6 +436,7 @@ printf 'slotA %s\n' "$APP_VERSION" > "$STATE_REALM/accepted"
 [ ! -e "$TARGET_DIR/root/NextGen" ] ||
     { echo "error: obsolete /root/NextGen survived image staging" >&2; exit 1; }
 
+"$SCRIPT_DIR/verify-target-layout.sh" "$TARGET_DIR" "$PRODUCT"
 
 # Development images deliberately keep a password login recovery path.
 # The defconfig sets the root password to "root"; current OpenSSH defaults
