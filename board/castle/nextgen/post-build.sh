@@ -100,8 +100,30 @@ else
     echo "NextGen kernel modules: none for this kernel profile"
 fi
 
+# Rootfs overlays are applied before this post-build hook.  The development
+# overlay still carries its factory/test mutable seed in the historical
+# /root/Exec location so older images/checkouts remain usable.  Import only
+# explicitly mutable data from there into the new realms before deleting the
+# legacy directory; never copy executables/platform helpers into data/.
+LEGACY_EXEC="$TARGET_DIR/root/Exec"
+if [ -d "$LEGACY_EXEC" ]; then
+    for name in SettingsJSON0.dat SettingsJSON1.dat CalFile.dat FacCalFile.dat FTPQueue.dat; do
+        [ ! -f "$LEGACY_EXEC/$name" ] ||
+            install -m 0644 "$LEGACY_EXEC/$name" "$DATA_REALM/$name"
+    done
+
+    if [ -d "$LEGACY_EXEC/Templates" ]; then
+        mkdir -p "$DATA_REALM/Templates"
+        cp -aL "$LEGACY_EXEC/Templates/." "$DATA_REALM/Templates/"
+    fi
+
+    [ ! -f "$LEGACY_EXEC/engmode" ] ||
+        install -m 0644 "$LEGACY_EXEC/engmode" "$COMMON_STATE/engmode"
+fi
+
 # The platform owns the launcher and helper tools. The old /root/Exec layout
-# must not leak into an incremental Buildroot output tree.
+# must not leak into an incremental Buildroot output tree after its mutable
+# seed has been imported.
 rm -f "$TARGET_DIR/etc/init.d/S55NextGen" "$TARGET_DIR/root/NextGen"
 rm -rf "$TARGET_DIR/root/Exec"
 install -m 0755 "$SCRIPT_DIR/rootfs-overlay/etc/init.d/S00NextGen" \
