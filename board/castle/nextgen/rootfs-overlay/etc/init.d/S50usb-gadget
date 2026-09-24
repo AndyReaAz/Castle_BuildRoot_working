@@ -2,7 +2,7 @@
 
 USB_CONTROL=/opt/nextgen/platform/bin/usbcontrol.sh
 PRODUCT="$(cat /etc/nextgen-product 2>/dev/null || echo sound)"
-ENGMODE_FILE="/opt/nextgen/data/$PRODUCT/engmode"
+ENGMODE_FILE="/opt/nextgen/common/state/engmode"
 
 start_gadget()
 {
