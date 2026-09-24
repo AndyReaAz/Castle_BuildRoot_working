@@ -8,11 +8,27 @@ APP_DIR="${NEXTGEN_APP_DIR:-$WORKSPACE_DIR/app}"
 PRODUCT="${NEXTGEN_PRODUCT:-sound}"
 KERNEL_BUILD_DIR="${NEXTGEN_KERNEL_BUILD_DIR:-$WORKSPACE_DIR/linux-working/build-fast}"
 KERNEL_MODULES_ROOT="${NEXTGEN_KERNEL_MODULES_ROOT:-$KERNEL_BUILD_DIR/mods/lib/modules}"
-EXEC_DIR="$TARGET_DIR/root/Exec"
 COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
-mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" "$EXEC_DIR"
+
+NEXTGEN_ROOT="$TARGET_DIR/opt/nextgen"
+PLATFORM_BIN="$NEXTGEN_ROOT/platform/bin"
+PLATFORM_SHARE="$NEXTGEN_ROOT/platform/share"
+APP_REALM="$NEXTGEN_ROOT/app/$PRODUCT"
+DATA_COMMON="$NEXTGEN_ROOT/data/common"
+DATA_REALM="$NEXTGEN_ROOT/data/$PRODUCT"
+STATE_REALM="$NEXTGEN_ROOT/state/$PRODUCT"
+STATE_PLATFORM="$NEXTGEN_ROOT/state/platform"
+
+# output-nextgen is incremental. Recreate the NextGen-owned hierarchy on every
+# image build so stale files from an older layout cannot leak into a new image.
+rm -rf "$NEXTGEN_ROOT"
+mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" \
+    "$PLATFORM_BIN" "$PLATFORM_SHARE" "$APP_REALM" \
+    "$DATA_COMMON" "$DATA_REALM" "$STATE_REALM" "$STATE_PLATFORM"
+
 KERNEL_PROFILE="${NEXTGEN_KERNEL_PROFILE:-unspecified}"
 printf '%s\n' "$KERNEL_PROFILE" > "$TARGET_DIR/etc/nextgen-kernel-profile"
+printf '%s\n' "$PRODUCT" > "$TARGET_DIR/etc/nextgen-product"
 
 # Install the complete module tree when this kernel profile produces modules.
 # The LZ4 control kernel is monolithic and legitimately has no module tree.
