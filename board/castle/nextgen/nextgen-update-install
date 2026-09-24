@@ -92,6 +92,7 @@ ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
 case "$ACTIVE" in
     slotA) OLD=slotA; NEW=slotB ;;
     slotB) OLD=slotB; NEW=slotA ;;
+    factory) OLD=factory; NEW=slotA ;;
     *) die "active application slot is not initialised" ;;
 esac
 
