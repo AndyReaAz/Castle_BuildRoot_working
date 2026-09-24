@@ -13,8 +13,9 @@ COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
 NEXTGEN_ROOT="$TARGET_DIR/opt/nextgen"
 PLATFORM_BIN="$NEXTGEN_ROOT/platform/bin"
 PLATFORM_SHARE="$NEXTGEN_ROOT/platform/share"
+COMMON_SHARE="$NEXTGEN_ROOT/common/share"
+COMMON_STATE="$NEXTGEN_ROOT/common/state"
 APP_REALM="$NEXTGEN_ROOT/app/$PRODUCT"
-DATA_COMMON="$NEXTGEN_ROOT/data/common"
 DATA_REALM="$NEXTGEN_ROOT/data/$PRODUCT"
 STATE_REALM="$NEXTGEN_ROOT/state/$PRODUCT"
 STATE_PLATFORM="$NEXTGEN_ROOT/state/platform"
@@ -23,8 +24,8 @@ STATE_PLATFORM="$NEXTGEN_ROOT/state/platform"
 # image build so stale files from an older layout cannot leak into a new image.
 rm -rf "$NEXTGEN_ROOT"
 mkdir -p "$TARGET_DIR/root" "$TARGET_DIR/boot" \
-    "$PLATFORM_BIN" "$PLATFORM_SHARE" "$APP_REALM" \
-    "$DATA_COMMON" "$DATA_REALM" "$STATE_REALM" "$STATE_PLATFORM"
+    "$PLATFORM_BIN" "$PLATFORM_SHARE" "$COMMON_SHARE" "$COMMON_STATE" "$APP_REALM" \
+    "$DATA_REALM" "$STATE_REALM" "$STATE_PLATFORM"
 
 KERNEL_PROFILE="${NEXTGEN_KERNEL_PROFILE:-unspecified}"
 printf '%s\n' "$KERNEL_PROFILE" > "$TARGET_DIR/etc/nextgen-kernel-profile"
@@ -333,7 +334,7 @@ fi
 # Shared fonts are platform-owned and do not participate in application slot
 # switching. Release-dependent translations live beside the executable.
 for name in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
-    [ ! -e "$COMMON_RUNTIME/$name" ] || install -m 0644 "$COMMON_RUNTIME/$name" "$PLATFORM_SHARE/$name"
+    [ ! -e "$COMMON_RUNTIME/$name" ] || install -m 0644 "$COMMON_RUNTIME/$name" "$COMMON_SHARE/$name"
 done
 
 case "$PRODUCT" in
