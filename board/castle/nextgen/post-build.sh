@@ -360,6 +360,7 @@ fi
 STALE_SOURCE="$(
     find "$APP_DIR/Application" "$APP_DIR/LicenceGenerator/FirmwareReference" \
         -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' \) \
+        ! -name buildnumber.h \
         -newer "$APP_BINARY" -print -quit 2>/dev/null || true
 )"
 if [ -n "$STALE_SOURCE" ]; then
