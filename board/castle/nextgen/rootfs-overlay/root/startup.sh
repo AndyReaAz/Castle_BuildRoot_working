@@ -19,6 +19,7 @@ STATE_ROOT="$ROOT/state/$PRODUCT"
 PENDING="$STATE_ROOT/pending"
 BOOTING="$STATE_ROOT/booting"
 ROLLBACK="$STATE_ROOT/rollback"
+ACCEPTED="$STATE_ROOT/accepted"
 
 mkdir -p "$STATE_ROOT"
 
@@ -40,36 +41,86 @@ valid_app_ref()
 
 slot_version()
 {
-    ref="$1"
-    valid_app_ref "$ref" || return 1
-    info="$APP_ROOT/$ref/bundle.info"
-    [ -r "$info" ] || return 1
-    [ "$(sed -n 's/^format=//p' "$info")" = 3 ] || return 1
-    [ "$(sed -n 's/^product=//p' "$info")" = "$PRODUCT" ] || return 1
-    value="$(sed -n 's/^version=//p' "$info")"
-    case "$value" in ''|*[!0-9]*) return 1 ;; esac
-    [ "$value" -gt 0 ] && [ "$value" -le 2147483647 ] || return 1
-    printf '%s\n' "$value"
+    valid_app_ref "$1" || return 1
+    slot_info="$APP_ROOT/$1/bundle.info"
+    [ -r "$slot_info" ] || return 1
+    [ "$(sed -n 's/^format=//p' "$slot_info")" = 3 ] || return 1
+    [ "$(sed -n 's/^product=//p' "$slot_info")" = "$PRODUCT" ] || return 1
+    slot_meta_version="$(sed -n 's/^version=//p' "$slot_info")"
+    case "$slot_meta_version" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$slot_meta_version" -gt 0 ] &&
+        [ "$slot_meta_version" -le 2147483647 ] || return 1
+    printf '%s\n' "$slot_meta_version"
 }
 
 slot_app_valid()
 {
-    ref="$1"
-    slot_version "$ref" >/dev/null 2>&1 &&
-    [ -x "$APP_ROOT/$ref/NextGen" ] &&
-    [ -r "$APP_ROOT/$ref/Translations.csv" ] &&
-    { [ "$PRODUCT" != sound ] || [ -r "$APP_ROOT/$ref/BaseHPD/hpdc.csv" ]; }
+    valid_app_ref "$1" &&
+    slot_version "$1" >/dev/null 2>&1 &&
+    [ -x "$APP_ROOT/$1/NextGen" ] &&
+    [ -r "$APP_ROOT/$1/Translations.csv" ] &&
+    { [ "$PRODUCT" != sound ] || [ -r "$APP_ROOT/$1/BaseHPD/hpdc.csv" ]; }
 }
 
 atomic_link()
 {
-    target="$1"
-    link="$2"
-    tmp="$APP_ROOT/.link.tmp"
-    rm -f "$tmp"
-    ln -s "$target" "$tmp"
-    mv -Tf "$tmp" "$link"
+    link_target="$1"
+    link_path="$2"
+    link_tmp="$APP_ROOT/.link.tmp"
+    rm -f "$link_tmp"
+    ln -s "$link_target" "$link_tmp"
+    mv -Tf "$link_tmp" "$link_path"
     sync
+}
+
+accepted_ref()
+{
+    accepted_slot=
+    accepted_version=
+    accepted_extra=
+    [ -r "$ACCEPTED" ] || return 1
+    IFS=' ' read -r accepted_slot accepted_version accepted_extra < "$ACCEPTED" ||
+        return 1
+    valid_app_ref "$accepted_slot" || return 1
+    case "$accepted_version" in ''|*[!0-9]*) return 1 ;; esac
+    [ -z "$accepted_extra" ] || return 1
+    [ "$(slot_version "$accepted_slot" 2>/dev/null || true)" = "$accepted_version" ] ||
+        return 1
+    slot_app_valid "$accepted_slot" || return 1
+    printf '%s\n' "$accepted_slot"
+}
+
+recover_known_good()
+{
+    preferred="$1"
+
+    if valid_app_ref "$preferred" && slot_app_valid "$preferred"; then
+        atomic_link "$preferred" "$APP_ROOT/active"
+        atomic_link "$preferred" "$APP_ROOT/previous"
+        return 0
+    fi
+
+    known_good="$(accepted_ref 2>/dev/null || true)"
+    if [ -n "$known_good" ] && slot_app_valid "$known_good"; then
+        atomic_link "$known_good" "$APP_ROOT/active"
+        atomic_link "$known_good" "$APP_ROOT/previous"
+        return 0
+    fi
+
+    previous="$(readlink "$APP_ROOT/previous" 2>/dev/null || true)"
+    if valid_app_ref "$previous" && slot_app_valid "$previous"; then
+        atomic_link "$previous" "$APP_ROOT/active"
+        atomic_link "$previous" "$APP_ROOT/previous"
+        return 0
+    fi
+
+    if slot_app_valid factory; then
+        atomic_link factory "$APP_ROOT/active"
+        atomic_link factory "$APP_ROOT/previous"
+        return 0
+    fi
+
+    return 1
 }
 
 mark_rollback()
@@ -77,167 +128,130 @@ mark_rollback()
     printf '%s\n' rollback > "$STATE_ROOT/.rollback.tmp"
     sync
     mv -f "$STATE_ROOT/.rollback.tmp" "$ROLLBACK"
+    sync
     rm -f "$PENDING" "$BOOTING"
     sync
 }
 
-ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
-
-# Once rollback intent is durable it wins over any stale pending/booting files
-# left by a power cut in mark_rollback(). Keep the marker for the application
-# acceptance helper, which repairs the removable-media download state.
+# A durable rollback marker is authoritative. A power cut may have happened
+# after it was written but before pending/booting were removed. Recover the
+# last accepted slot first and leave the marker for the Application helper,
+# which repairs the removable-media download state after /sdcard is mounted.
 if [ -f "$ROLLBACK" ]; then
+    recover_known_good "" || true
     rm -f "$PENDING" "$BOOTING"
     sync
 fi
 
-if [ -f "$PENDING" ]; then
+if [ -f "$PENDING" ] && [ ! -f "$ROLLBACK" ]; then
     new=
     old=
     version=
     extra=
     IFS=' ' read -r new old version extra < "$PENDING" || true
 
-    if ! valid_update_slot "$new" || ! valid_app_ref "$old" ||
-       [ -n "$extra" ]; then
-        echo "NextGen launcher: discarding malformed pending update"
-        PREVIOUS="$(readlink "$APP_ROOT/previous" 2>/dev/null || true)"
-        if slot_app_valid "$PREVIOUS"; then
-            atomic_link "$PREVIOUS" "$APP_ROOT/active"
-            ACTIVE="$PREVIOUS"
-        elif slot_app_valid factory; then
-            atomic_link factory "$APP_ROOT/active"
-            atomic_link factory "$APP_ROOT/previous"
-            ACTIVE=factory
-        fi
+    pending_valid=1
+    valid_update_slot "$new" || pending_valid=0
+    valid_app_ref "$old" || pending_valid=0
+    case "$version" in ''|*[!0-9]*) pending_valid=0 ;; esac
+    [ -z "$extra" ] || pending_valid=0
+
+    if [ "$pending_valid" -eq 1 ]; then
+        [ "$version" -gt 0 ] && [ "$version" -le 2147483647 ] ||
+            pending_valid=0
+    fi
+
+    if [ "$pending_valid" -eq 1 ]; then
+        candidate_version="$(slot_version "$new" 2>/dev/null || true)"
+        [ "$candidate_version" = "$version" ] || pending_valid=0
+        slot_app_valid "$new" || pending_valid=0
+        slot_app_valid "$old" || pending_valid=0
+    fi
+
+    if [ "$pending_valid" -ne 1 ]; then
+        echo "NextGen launcher: malformed/inconsistent pending update; rolling back"
+        recover_known_good "$old" || true
         mark_rollback
     else
-        case "$version" in ''|*[!0-9]*) version=0 ;; esac
-        candidate_version="$(slot_version "$new" 2>/dev/null || echo 0)"
-        if [ "$version" -le 0 ] || [ "$version" -gt 2147483647 ] ||
-           [ "$candidate_version" != "$version" ]; then
-            echo "NextGen launcher: pending metadata does not match candidate"
-            if slot_app_valid "$old"; then
-                atomic_link "$old" "$APP_ROOT/active"
-                atomic_link "$old" "$APP_ROOT/previous"
-                ACTIVE="$old"
-            elif slot_app_valid factory; then
-                atomic_link factory "$APP_ROOT/active"
-                atomic_link factory "$APP_ROOT/previous"
-                ACTIVE=factory
-            fi
-            mark_rollback
-        else
-        ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
-        BOOT_SLOT="$(cat "$BOOTING" 2>/dev/null || true)"
-        ACCEPTED="$(cat "$STATE_ROOT/accepted" 2>/dev/null || true)"
+        active="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
+        boot_slot="$(cat "$BOOTING" 2>/dev/null || true)"
+        accepted_line="$(cat "$ACCEPTED" 2>/dev/null || true)"
 
-        if [ "$ACCEPTED" = "$new $version" ] && [ "$ACTIVE" = "$new" ]; then
-            # Acceptance was durable; only transient cleanup was interrupted.
+        if [ "$accepted_line" = "$new $version" ] && [ "$active" = "$new" ]; then
+            # Acceptance was already durable; only transient state cleanup was
+            # interrupted. The Application helper will retry package cleanup.
             echo "NextGen launcher: finalising accepted slot $new version $version"
             rm -f "$PENDING" "$BOOTING" "$ROLLBACK"
             sync
 
-        elif [ "$ACTIVE" = "$old" ]; then
-            # Normal first boot after installation: old release is still live.
-            if slot_app_valid "$new" && slot_app_valid "$old"; then
-                atomic_link "$old" "$APP_ROOT/previous"
-                atomic_link "$new" "$APP_ROOT/active"
+        elif [ "$active" = "$old" ]; then
+            # First attempt: OLD is still the running/known-good release.
+            atomic_link "$old" "$APP_ROOT/previous"
+            atomic_link "$new" "$APP_ROOT/active"
+            printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
+            sync
+            mv -f "$STATE_ROOT/.booting.tmp" "$BOOTING"
+            sync
+            echo "NextGen launcher: trying pending slot $new version $version"
+
+        elif [ "$active" = "$new" ]; then
+            if [ "$boot_slot" = "$new" ]; then
+                # The candidate was launched once but never accepted.
+                echo "NextGen launcher: update $version failed acceptance; rolling back"
+                recover_known_good "$old" || true
+                mark_rollback
+            elif [ -z "$boot_slot" ]; then
+                # Power disappeared after active was switched but before the
+                # first-boot marker became durable. This is still attempt one.
                 printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
                 sync
                 mv -f "$STATE_ROOT/.booting.tmp" "$BOOTING"
                 sync
-                ACTIVE="$new"
-                echo "NextGen launcher: trying pending slot $new version $version"
+                echo "NextGen launcher: resuming first try of slot $new version $version"
             else
-                echo "NextGen launcher: staged or previous slot is invalid; keeping $old"
+                echo "NextGen launcher: inconsistent boot marker; rolling back"
+                recover_known_good "$old" || true
                 mark_rollback
             fi
 
-        elif [ "$ACTIVE" = "$new" ]; then
-            if [ "$BOOT_SLOT" = "$new" ]; then
-                # The candidate was already launched once and never accepted.
-                if slot_app_valid "$old"; then
-                    echo "NextGen launcher: update $version failed acceptance; rolling back $new -> $old"
-                    atomic_link "$new" "$APP_ROOT/previous"
-                    atomic_link "$old" "$APP_ROOT/active"
-                    ACTIVE="$old"
-                    mark_rollback
-                elif slot_app_valid factory; then
-                    echo "NextGen launcher: previous slot invalid; rolling back candidate to factory"
-                    atomic_link factory "$APP_ROOT/active"
-                    atomic_link factory "$APP_ROOT/previous"
-                    ACTIVE=factory
-                    mark_rollback
-                else
-                    echo "NextGen launcher: no rollback image is valid; retaining candidate" >&2
-                    rm -f "$BOOTING"
-                fi
-            else
-                # Power disappeared after the active rename but before the
-                # first-boot marker was durable. Treat this as the first try.
-                if slot_app_valid "$new"; then
-                    printf '%s\n' "$new" > "$STATE_ROOT/.booting.tmp"
-                    sync
-                    mv -f "$STATE_ROOT/.booting.tmp" "$BOOTING"
-                    sync
-                    echo "NextGen launcher: resuming first try of slot $new version $version"
-                else
-                    echo "NextGen launcher: candidate became invalid before first boot"
-                    if slot_app_valid "$old"; then
-                        atomic_link "$old" "$APP_ROOT/active"
-                        atomic_link "$old" "$APP_ROOT/previous"
-                    fi
-                    mark_rollback
-                fi
-            fi
-
         else
-            # The active pointer does not correspond to either side of the
-            # prepared transaction. Prefer the known previous image, then
-            # factory, and mark the staged update for retry cleanup.
-            echo "NextGen launcher: unexpected active slot '$ACTIVE' during update"
-            if slot_app_valid "$old"; then
-                atomic_link "$old" "$APP_ROOT/active"
-                atomic_link "$old" "$APP_ROOT/previous"
-                ACTIVE="$old"
-            elif slot_app_valid factory; then
-                atomic_link factory "$APP_ROOT/active"
-                atomic_link factory "$APP_ROOT/previous"
-                ACTIVE=factory
-            fi
+            echo "NextGen launcher: unexpected active slot '$active'; rolling back"
+            recover_known_good "$old" || true
             mark_rollback
-        fi
         fi
     fi
 elif [ -e "$BOOTING" ]; then
     rm -f "$BOOTING"
+    sync
 fi
 
-ACTIVE="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
-if slot_app_valid "$ACTIVE"; then
-    echo "Launching NextGen $PRODUCT $ACTIVE"
-    exec "$APP_ROOT/$ACTIVE/NextGen"
+active="$(readlink "$APP_ROOT/active" 2>/dev/null || true)"
+if slot_app_valid "$active"; then
+    echo "Launching NextGen $PRODUCT $active"
+    exec "$APP_ROOT/$active/NextGen"
 fi
 
-PREVIOUS="$(readlink "$APP_ROOT/previous" 2>/dev/null || true)"
-if slot_app_valid "$PREVIOUS"; then
-    echo "NextGen launcher: active slot invalid; recovering $PREVIOUS"
-    atomic_link "$PREVIOUS" "$APP_ROOT/active"
-    exec "$APP_ROOT/$PREVIOUS/NextGen"
+known_good="$(accepted_ref 2>/dev/null || true)"
+if [ -n "$known_good" ] && slot_app_valid "$known_good"; then
+    echo "NextGen launcher: active slot invalid; recovering accepted $known_good"
+    atomic_link "$known_good" "$APP_ROOT/active"
+    atomic_link "$known_good" "$APP_ROOT/previous"
+    exec "$APP_ROOT/$known_good/NextGen"
+fi
+
+previous="$(readlink "$APP_ROOT/previous" 2>/dev/null || true)"
+if valid_app_ref "$previous" && slot_app_valid "$previous"; then
+    echo "NextGen launcher: active slot invalid; recovering $previous"
+    atomic_link "$previous" "$APP_ROOT/active"
+    exec "$APP_ROOT/$previous/NextGen"
 fi
 
 if slot_app_valid factory; then
-    echo "NextGen launcher: both update slots invalid; recovering factory image"
+    echo "NextGen launcher: no update slot valid; recovering factory image"
     atomic_link factory "$APP_ROOT/active"
     atomic_link factory "$APP_ROOT/previous"
-    if [ -f "$PENDING" ]; then
-        mark_rollback
-    else
-        rm -f "$BOOTING"
-        sync
-    fi
-    exec "$APP_ROOT/active/NextGen"
+    [ ! -f "$PENDING" ] || mark_rollback
+    exec "$APP_ROOT/factory/NextGen"
 fi
 
 echo "NextGen launcher: no valid application image" >&2
