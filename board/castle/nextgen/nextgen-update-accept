@@ -5,7 +5,11 @@ set -eu
 PRODUCT="$1"
 case "$PRODUCT" in sound|vibra) ;; *) exit 2 ;; esac
 
-ROOT=/opt/nextgen
+# Defaults are the production image paths.  Overrides permit deterministic
+# host-side state-machine tests without touching /opt or /sdcard.
+ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
+SDCARD_ROOT="${NEXTGEN_SDCARD_ROOT:-/sdcard}"
+MOUNTS_FILE="${NEXTGEN_MOUNTS_FILE:-/proc/mounts}"
 APP_ROOT="$ROOT/app/$PRODUCT"
 STATE_ROOT="$ROOT/state/$PRODUCT"
 PENDING="$STATE_ROOT/pending"
@@ -39,7 +43,10 @@ slot_app_valid()
 
 sdcard_mounted()
 {
-    grep -qs ' /sdcard ' /proc/mounts
+    awk -v mountpoint="$SDCARD_ROOT" '
+        $2 == mountpoint { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$MOUNTS_FILE" 2>/dev/null
 }
 
 cleanup_download()
@@ -63,7 +70,7 @@ cleanup_download()
     package_dir="${package%/*}"
     package_name="${package##*/}"
     case "$package_dir" in
-        /sdcard/public|/sdcard/temp/TempFirmware) ;;
+        "$SDCARD_ROOT/public"|"$SDCARD_ROOT/temp/TempFirmware") ;;
         *) return 1 ;;
     esac
     case "$package_name" in
@@ -77,12 +84,12 @@ cleanup_download()
 
     if [ "$outcome" = accepted ]; then
         rm -f "$package" || return 1
-        if [ "$package_dir" = /sdcard/temp/TempFirmware ]; then
+        if [ "$package_dir" = "$SDCARD_ROOT/temp/TempFirmware" ]; then
             rm -f "$package_dir/.status" "$package_dir/.status.nextgen.tmp" ||
                 return 1
         fi
     else
-        if [ "$package_dir" = /sdcard/temp/TempFirmware ]; then
+        if [ "$package_dir" = "$SDCARD_ROOT/temp/TempFirmware" ]; then
             status="$package_dir/.status"
             if [ -f "$package" ]; then
                 # The download is still complete and verified; make it
