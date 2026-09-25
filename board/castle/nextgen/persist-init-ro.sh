@@ -4,8 +4,14 @@ set -eu
 SCHEMA_FILE="/etc/nextgen-storage-schema"
 PERSIST="/persist"
 READY="/run/nextgen-persist-ready"
+PRODUCT="$(cat /etc/nextgen-product 2>/dev/null || true)"
 
 [ "$(cat "$SCHEMA_FILE" 2>/dev/null || true)" = "ro-persist-v1" ] || exit 0
+case "$PRODUCT" in sound|vibra) ;; *)
+    echo "NextGen persist: invalid product '$PRODUCT'" >&2
+    exit 1
+    ;;
+esac
 rm -f "$READY"
 
 awk -v p="$PERSIST" '
@@ -21,7 +27,7 @@ awk -v p="$PERSIST" '
     exit 1
 }
 
-mkdir -p     "$PERSIST/app"     "$PERSIST/data"     "$PERSIST/state"     "$PERSIST/common-state"     "$PERSIST/os/NetworkManager/system-connections"     "$PERSIST/os/NetworkManager/state"     "$PERSIST/os/dbus"     "$PERSIST/os/ssh"     "$PERSIST/os/seedrng"
+mkdir -p     "$PERSIST/app/$PRODUCT/active"     "$PERSIST/data/$PRODUCT/Templates"     "$PERSIST/state/$PRODUCT"     "$PERSIST/state/platform"     "$PERSIST/common-state"     "$PERSIST/os/NetworkManager/system-connections"     "$PERSIST/os/NetworkManager/state"     "$PERSIST/os/dbus"     "$PERSIST/os/ssh"     "$PERSIST/os/seedrng"
 
 mkdir -p     /var/lib/dbus     /var/lib/NetworkManager     /var/lib/chrony     /var/log     /var/cache     /var/tmp
 
