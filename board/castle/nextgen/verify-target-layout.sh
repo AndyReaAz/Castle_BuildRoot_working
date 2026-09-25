@@ -109,13 +109,13 @@ done
 # rootfs-overlay-dev.  Catch any future layout migration that deletes the
 # historical /root/Exec overlay before importing these mutable files.
 if [ "$PRODUCT" = sound ]; then
-    for seed in Settings0.json Settings1.json CalFile.dat FacCalFile.dat; do
+    for seed in Settings0.json Settings1.json CalFile.json FacCalFile.json FTPQueue.json; do
         [ -s "$DATA/$seed" ] || fail "development sound seed $seed is missing or empty"
     done
-    [ ! -e "$DATA/SettingsJSON0.dat" ] ||
-        fail "legacy SettingsJSON0.dat survived staging"
-    [ ! -e "$DATA/SettingsJSON1.dat" ] ||
-        fail "legacy SettingsJSON1.dat survived staging"
+    for obsolete in SettingsJSON0.dat SettingsJSON1.dat CalFile.dat FacCalFile.dat FTPQueue.dat; do
+        [ ! -e "$DATA/$obsolete" ] ||
+            fail "obsolete mutable state $obsolete survived staging"
+    done
     [ -f "$COMMON_STATE/engmode" ] ||
         fail "development engineering-mode seed is missing"
 fi
