@@ -64,6 +64,15 @@ for helper in nextgen-update-install nextgen-update-accept usbcontrol.sh fwenv.s
     [ -x "$BIN/$helper" ] || fail "platform helper $helper is missing"
 done
 
+if [ ! -x "$TARGET_DIR/usr/sbin/fw_printenv" ] && [ ! -x "$TARGET_DIR/usr/bin/fw_printenv" ]; then
+    fail "fw_printenv is missing"
+fi
+if [ ! -x "$TARGET_DIR/usr/sbin/fw_setenv" ] && [ ! -x "$TARGET_DIR/usr/bin/fw_setenv" ]; then
+    fail "fw_setenv is missing"
+fi
+[ -r "$TARGET_DIR/etc/nextgen-storage-schema" ] ||
+    fail "storage schema marker is missing"
+
 grep -q 'nextgen.env=' "$BIN/fwenv.sh" ||
     fail "fwenv.sh does not select its backend from the kernel boot marker"
 grep -q 'uboot-env' "$BIN/fwenv.sh" ||
