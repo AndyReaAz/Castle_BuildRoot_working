@@ -127,9 +127,9 @@ esac
 case "$EXPECTED_KERNEL_RELEASE" in
     6.18.35-linux4microchip-2026.04.2+)
         case "$KERNEL_PROFILE" in
-            deferred|deferred-diag) ;;
+            deferred|deferred-diag|bringup) ;;
             *)
-                echo "error: Linux 6.18 NextGen images require deferred or deferred-diag policy" >&2
+                echo "error: Linux 6.18 NextGen images require deferred, deferred-diag or bringup policy" >&2
                 echo "       use ./build-nextgen-image.sh 6.18 [sound|vibra|both]" >&2
                 exit 1
                 ;;
@@ -183,6 +183,19 @@ if [ -d "$KERNEL_MODULES_ROOT" ]; then
         "$KERNEL_RELEASE" "$KERNEL_BUILD_DIR"
 else
     echo "NextGen kernel modules: none for this kernel profile"
+fi
+
+# The service/factory bring-up card is deliberately not an Application image.
+# It needs only the kernel, MTD tooling and the dedicated provisioning hook
+# which runs after this common hook. Do not require or stage a measurement
+# Application, mutable product seed, updater slots or release assets.
+if [ "$STORAGE_SCHEMA" = bringup-sd-v1 ]; then
+    rm -rf "$NEXTGEN_ROOT/app" "$NEXTGEN_ROOT/data" "$NEXTGEN_ROOT/state"         "$NEXTGEN_ROOT/common/state"
+    mkdir -p "$PLATFORM_BIN" "$PLATFORM_SHARE" "$COMMON_SHARE"
+    rm -f "$TARGET_DIR/etc/init.d/S00NextGen" "$TARGET_DIR/etc/init.d/S55NextGen"         "$TARGET_DIR/root/NextGen"
+    rm -rf "$TARGET_DIR/root/Exec"
+    echo "NextGen common staging complete: bring-up image (no measurement Application)"
+    exit 0
 fi
 
 # Development seed state is build input, not a temporary rootfs layout.
