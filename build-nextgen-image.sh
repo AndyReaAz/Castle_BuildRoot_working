@@ -410,8 +410,20 @@ build_product()
                 export NEXTGEN_PROVISION_BUNDLE_DIR
             fi
         fi
-        grep -q '^BR2_PACKAGE_MTD=y$' "$out/.config" ||
-            { echo "error: bring-up image requires mtd-utils" >&2; exit 1; }
+        for sym in \
+            BR2_PACKAGE_MTD \
+            BR2_PACKAGE_MTD_MTD_DEBUG \
+            BR2_PACKAGE_MTD_FLASH_ERASE \
+            BR2_PACKAGE_MTD_UBIFORMAT \
+            BR2_PACKAGE_MTD_UBIATTACH \
+            BR2_PACKAGE_MTD_UBIDETACH \
+            BR2_PACKAGE_MTD_FSCKUBIFS
+        do
+            grep -q "^$sym=y$" "$out/.config" || {
+                echo "error: bring-up image requires $sym=y" >&2
+                exit 1
+            }
+        done
         grep -q 'post-build-bringup.sh' "$out/.config" ||
             { echo "error: bring-up post-build hook is not configured" >&2; exit 1; }
     fi
