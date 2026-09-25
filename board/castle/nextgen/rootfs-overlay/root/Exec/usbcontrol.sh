@@ -228,31 +228,44 @@ settings_count()
     settings_uint "$1" Index
 }
 
-settings_valid()
+settings_has_current_metadata()
 {
     file="$1"
-
-    [ -f "$file" ] || return 1
-    [ "$(wc -c < "$file" 2>/dev/null)" -ge 3 ] || return 1
-
-    count="$(settings_count "$file")" || return 1
-    legacy_count="$(settings_legacy_count "$file" 2>/dev/null || true)"
-    if [ -n "$legacy_count" ] && [ "$legacy_count" != "$count" ]; then
-        return 1
-    fi
-
-    settings_uint "$file" SerialNumber >/dev/null || return 1
-    manufacturer="$(settings_uint "$file" Manufacturer)" || return 1
-    modeltype="$(settings_uint "$file" ModelType)" || return 1
 
     format="$(settings_string "$file" FileFormat 2>/dev/null || true)"
     schema="$(settings_uint "$file" SchemaVersion 2>/dev/null || true)"
     declared_product="$(settings_string "$file" Product 2>/dev/null || true)"
-    if [ -n "$format$schema$declared_product" ]; then
-        [ "$format" = "NextGenSettings" ] || return 1
-        [ "$schema" = "1" ] || return 1
-        [ "$declared_product" = "$PRODUCT" ] || return 1
-    fi
+
+    [ "$format" = "NextGenSettings" ] &&
+        [ "$schema" = "1" ] &&
+        [ "$declared_product" = "$PRODUCT" ]
+}
+
+settings_current_identity_valid()
+{
+    file="$1"
+
+    settings_has_current_metadata "$file" || return 1
+
+    usb_serial="$(settings_string "$file" UsbSerial 2>/dev/null || true)"
+    usb_manufacturer="$(settings_string "$file" UsbManufacturer 2>/dev/null || true)"
+    usb_product="$(settings_string "$file" UsbProduct 2>/dev/null || true)"
+
+    case "$usb_serial" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ -n "$usb_manufacturer" ] || return 1
+    [ -n "$usb_product" ] || return 1
+    return 0
+}
+
+settings_legacy_identity_valid()
+{
+    file="$1"
+
+    serial="$(settings_uint "$file" SerialNumber)" || return 1
+    manufacturer="$(settings_uint "$file" Manufacturer)" || return 1
+    modeltype="$(settings_uint "$file" ModelType)" || return 1
 
     case "$manufacturer" in
         1|2|3|4) ;;
@@ -266,6 +279,35 @@ settings_valid()
     esac
 
     return 0
+}
+
+settings_valid()
+{
+    file="$1"
+
+    [ -f "$file" ] || return 1
+    [ "$(wc -c < "$file" 2>/dev/null)" -ge 3 ] || return 1
+
+    count="$(settings_count "$file")" || return 1
+    legacy_count="$(settings_legacy_count "$file" 2>/dev/null || true)"
+    if [ -n "$legacy_count" ] && [ "$legacy_count" != "$count" ]; then
+        return 1
+    fi
+
+    format="$(settings_string "$file" FileFormat 2>/dev/null || true)"
+    schema="$(settings_uint "$file" SchemaVersion 2>/dev/null || true)"
+    declared_product="$(settings_string "$file" Product 2>/dev/null || true)"
+
+    # A self-describing settings file is authoritative for USB presentation:
+    # the shell does not duplicate manufacturer/model enum tables.
+    if [ -n "$format$schema$declared_product" ]; then
+        settings_current_identity_valid "$file"
+        return $?
+    fi
+
+    # Compatibility only: old files predate the self-describing metadata and
+    # require the historical numeric identity mapping below.
+    settings_legacy_identity_valid "$file"
 }
 
 select_settings_file()
@@ -287,86 +329,84 @@ select_settings_file()
     printf '%s\n' "$best_file"
 }
 
-read_gadget_identity()
+read_legacy_gadget_identity()
 {
-    settings_file="$(select_settings_file 2>/dev/null || true)"
+    file="$1"
 
-    if [ -n "$settings_file" ]; then
-        SERIALNUMBER="$(settings_uint "$settings_file" SerialNumber 2>/dev/null || echo 0)"
-        MANUFACTURER="$(settings_uint "$settings_file" Manufacturer 2>/dev/null || echo 0)"
-        MODELTYPE="$(settings_uint "$settings_file" ModelType 2>/dev/null || echo 0)"
-        IDENTITY_MANUFACTURER_NAME="$(
-            settings_string "$settings_file" ManufacturerName 2>/dev/null || true
-        )"
-        IDENTITY_PRODUCT_NAME="$(
-            settings_string "$settings_file" ProductName 2>/dev/null || true
-        )"
-    else
-        SERIALNUMBER=0
-        MANUFACTURER=0
-        MODELTYPE=0
-        IDENTITY_MANUFACTURER_NAME=""
-        IDENTITY_PRODUCT_NAME=""
-    fi
-}
+    serial="$(settings_uint "$file" SerialNumber 2>/dev/null || echo 0)"
+    manufacturer="$(settings_uint "$file" Manufacturer 2>/dev/null || echo 0)"
+    modeltype="$(settings_uint "$file" ModelType 2>/dev/null || echo 0)"
 
-usb_manufacturer_name()
-{
-    if [ -n "${IDENTITY_MANUFACTURER_NAME:-}" ]; then
-        printf '%s\n' "$IDENTITY_MANUFACTURER_NAME"
-        return 0
-    fi
+    USB_SERIAL="$(printf '%06d' "$serial")"
 
-    case "$MANUFACTURER" in
-        2) echo "SKC" ;;
-        3) echo "Pulsar Instruments" ;;
-        4) echo "Cirrus Research" ;;
-        *) echo "Castle Group" ;;
+    case "$manufacturer" in
+        2) USB_MANUFACTURER="SKC" ;;
+        3) USB_MANUFACTURER="Pulsar Instruments" ;;
+        4) USB_MANUFACTURER="Cirrus Research" ;;
+        *) USB_MANUFACTURER="Castle Group" ;;
     esac
-}
-
-usb_product_name()
-{
-    if [ -n "${IDENTITY_PRODUCT_NAME:-}" ]; then
-        printf '%s\n' "$IDENTITY_PRODUCT_NAME"
-        return 0
-    fi
 
     if [ "$PRODUCT" = vibra ]; then
-        case "$MANUFACTURER" in
+        case "$manufacturer" in
             1)
-                case "$MODELTYPE" in
-                    129) echo "VIBAir" ;;
-                    130) echo "VEXO" ;;
-                    131) echo "VIBA(8) V2" ;;
-                    *) echo "VIBA(8)" ;;
+                case "$modeltype" in
+                    129) USB_PRODUCT="VIBAir" ;;
+                    130) USB_PRODUCT="VEXO" ;;
+                    131) USB_PRODUCT="VIBA(8) V2" ;;
+                    *) USB_PRODUCT="VIBA(8)" ;;
                 esac
                 ;;
-            3) echo "vB2" ;;
-            *) echo "Triax" ;;
+            3) USB_PRODUCT="vB2" ;;
+            *) USB_PRODUCT="Triax" ;;
         esac
-    elif [ "$MANUFACTURER" -eq 2 ]; then
-        case "$MODELTYPE" in
-            3) echo "SoundCHEK PRO" ;;
-            *) echo "SoundCHEK" ;;
+    elif [ "$manufacturer" -eq 2 ]; then
+        case "$modeltype" in
+            3) USB_PRODUCT="SoundCHEK PRO" ;;
+            *) USB_PRODUCT="SoundCHEK" ;;
         esac
     else
-        case "$MODELTYPE" in
-            1) echo "dBAir" ;;
-            2) echo "dBAngel" ;;
-            3) echo "dBAir Pro" ;;
-            *) echo "Sonik Meter" ;;
+        case "$modeltype" in
+            1) USB_PRODUCT="dBAir" ;;
+            2) USB_PRODUCT="dBAngel" ;;
+            3) USB_PRODUCT="dBAir Pro" ;;
+            *) USB_PRODUCT="Sonik Meter" ;;
         esac
     fi
+}
+
+read_gadget_identity()
+{
+    USB_SERIAL="000000"
+    USB_MANUFACTURER="Castle Group"
+    if [ "$PRODUCT" = vibra ]; then
+        USB_PRODUCT="VIBA(8)"
+    else
+        USB_PRODUCT="Sonik Meter"
+    fi
+    SETTINGS_INDEX=""
+
+    settings_file="$(select_settings_file 2>/dev/null || true)"
+    [ -n "$settings_file" ] || return 0
+
+    SETTINGS_INDEX="$(settings_count "$settings_file" 2>/dev/null || true)"
+
+    if settings_current_identity_valid "$settings_file"; then
+        USB_SERIAL="$(settings_string "$settings_file" UsbSerial)"
+        USB_MANUFACTURER="$(settings_string "$settings_file" UsbManufacturer)"
+        USB_PRODUCT="$(settings_string "$settings_file" UsbProduct)"
+        return 0
+    fi
+
+    read_legacy_gadget_identity "$settings_file"
 }
 
 write_gadget_identity()
 {
     read_gadget_identity
 
-    printf "%06d\n" "$SERIALNUMBER" > "$GADGET/strings/0x409/serialnumber"
-    usb_manufacturer_name > "$GADGET/strings/0x409/manufacturer"
-    usb_product_name > "$GADGET/strings/0x409/product"
+    printf '%s\n' "$USB_SERIAL" > "$GADGET/strings/0x409/serialnumber"
+    printf '%s\n' "$USB_MANUFACTURER" > "$GADGET/strings/0x409/manufacturer"
+    printf '%s\n' "$USB_PRODUCT" > "$GADGET/strings/0x409/product"
 }
 
 load_gadget_modules()
@@ -869,11 +909,10 @@ case "$1" in
 
     identity)
         read_gadget_identity
-        echo "SerialNumber=$SERIALNUMBER"
-        echo "Manufacturer=$MANUFACTURER"
-        echo "ModelType=$MODELTYPE"
-        echo "ManufacturerName=$(usb_manufacturer_name)"
-        echo "ProductName=$(usb_product_name)"
+        echo "SettingsIndex=$SETTINGS_INDEX"
+        echo "UsbSerial=$USB_SERIAL"
+        echo "UsbManufacturer=$USB_MANUFACTURER"
+        echo "UsbProduct=$USB_PRODUCT"
         ;;
 
     mask)
