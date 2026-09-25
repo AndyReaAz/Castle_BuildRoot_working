@@ -2,11 +2,18 @@
 set -eu
 
 SCHEMA_FILE="/etc/nextgen-storage-schema"
+BACKEND_FILE="/etc/nextgen-storage-backend"
 PERSIST="/persist"
 READY="/run/nextgen-persist-ready"
 PRODUCT="$(cat /etc/nextgen-product 2>/dev/null || true)"
+BACKEND="$(cat "$BACKEND_FILE" 2>/dev/null || true)"
 
 [ "$(cat "$SCHEMA_FILE" 2>/dev/null || true)" = "ro-persist-v1" ] || exit 0
+case "$BACKEND" in sd-ext4|nand-ubi) ;; *)
+    echo "NextGen persist: invalid storage backend '$BACKEND'" >&2
+    exit 1
+    ;;
+esac
 case "$PRODUCT" in sound|vibra) ;; *)
     echo "NextGen persist: invalid product '$PRODUCT'" >&2
     exit 1
@@ -32,34 +39,66 @@ persist_is_rw()
     ' /proc/mounts
 }
 
-recover_persist()
+ubi_volume_by_name()
+{
+    wanted="$1"
+    for path in /sys/class/ubi/ubi[0-9]*_[0-9]*
+    do
+        [ -f "$path/name" ] || continue
+        [ "$(cat "$path/name" 2>/dev/null || true)" = "$wanted" ] || continue
+        printf '/dev/%s\n' "$(basename "$path")"
+        return 0
+    done
+    return 1
+}
+
+recover_ext4_persist()
 {
     device="$(awk -v p="$PERSIST" '$2 == p { print $1; exit }' /etc/fstab)"
     [ -n "$device" ] && [ -b "$device" ] || return 1
     command -v e2fsck >/dev/null 2>&1 || return 1
 
-    # This runs before any /persist-backed bind mounts are established, so a
-    # failed/RO mount can still be safely detached for repair.
     if is_mounted "$PERSIST"; then
         umount "$PERSIST" || return 1
     fi
 
     rc=0
     e2fsck -p "$device" || rc=$?
-    case "$rc" in
-        0|1) ;;
-        *)
-            echo "NextGen persist: e2fsck failed for $device (rc=$rc)" >&2
-            return 1
-            ;;
-    esac
+    case "$rc" in 0|1) ;; *) return 1 ;; esac
 
     mount "$PERSIST" || return 1
     persist_is_rw
 }
 
+recover_ubifs_persist()
+{
+    device="$(ubi_volume_by_name persist)" || return 1
+    [ -c "$device" ] || return 1
+    command -v fsck.ubifs >/dev/null 2>&1 || return 1
+
+    if is_mounted "$PERSIST"; then
+        umount "$PERSIST" || return 1
+    fi
+
+    rc=0
+    fsck.ubifs -a "$device" || rc=$?
+    case "$rc" in 0|1) ;; *) return 1 ;; esac
+
+    mount "$PERSIST" || return 1
+    persist_is_rw
+}
+
+recover_persist()
+{
+    case "$BACKEND" in
+        sd-ext4) recover_ext4_persist ;;
+        nand-ubi) recover_ubifs_persist ;;
+        *) return 1 ;;
+    esac
+}
+
 if ! persist_is_rw; then
-    echo "NextGen persist: initial $PERSIST mount unavailable; attempting repair" >&2
+    echo "NextGen persist: initial $PERSIST mount unavailable on $BACKEND; attempting repair" >&2
     recover_persist || {
         echo "NextGen persist: $PERSIST is not safely mounted read-write" >&2
         exit 1
