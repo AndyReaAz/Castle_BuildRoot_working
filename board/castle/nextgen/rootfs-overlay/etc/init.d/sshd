@@ -8,6 +8,9 @@ PIDFILE="${NEXTGEN_SSH_PIDFILE:-/var/run/$DAEMON_NAME.pid}"
 RUNTIME_DIR="${NEXTGEN_SSH_RUNTIME_DIR:-/run}"
 START_LOCK="$RUNTIME_DIR/nextgen-sshd-start.lock"
 STOP_MARK="$RUNTIME_DIR/nextgen-sshd-stop.pending"
+STORAGE_SCHEMA="$(cat /etc/nextgen-storage-schema 2>/dev/null || true)"
+PERSIST_KEY_DIR="${NEXTGEN_SSH_KEY_DIR:-/persist/os/ssh}"
+SSHD_HOSTKEY_ARGS=
 
 mkdir -p "$RUNTIME_DIR" || exit 1
 umask 077
@@ -43,6 +46,32 @@ acquire_start_lock()
     return 1
 }
 
+prepare_host_keys()
+{
+    if [ "$STORAGE_SCHEMA" != ro-persist-v1 ]; then
+        echo "Ensuring SSH host keys"
+        "$KEYGEN" -A
+        return
+    fi
+
+    mkdir -p "$PERSIST_KEY_DIR" || return 1
+    chmod 0700 "$PERSIST_KEY_DIR" || return 1
+
+    ed25519="$PERSIST_KEY_DIR/ssh_host_ed25519_key"
+    rsa="$PERSIST_KEY_DIR/ssh_host_rsa_key"
+
+    if [ ! -s "$ed25519" ]; then
+        "$KEYGEN" -q -t ed25519 -N "" -f "$ed25519" || return 1
+    fi
+    if [ ! -s "$rsa" ]; then
+        "$KEYGEN" -q -t rsa -b 3072 -N "" -f "$rsa" || return 1
+    fi
+
+    chmod 0600 "$ed25519" "$rsa" || return 1
+    SSHD_HOSTKEY_ARGS="-h $ed25519 -h $rsa"
+    return 0
+}
+
 start()
 {
     [ -x "$KEYGEN" ] || {
@@ -62,13 +91,12 @@ start()
     trap 'release_start_lock' EXIT HUP INT TERM
     rm -f "$STOP_MARK"
 
-    echo "Ensuring SSH host keys"
-    "$KEYGEN" -A || {
+    if ! prepare_host_keys; then
         echo "SSH host key generation failed"
         release_start_lock
         trap - EXIT HUP INT TERM
         return 1
-    }
+    fi
 
     if [ -e "$STOP_MARK" ]; then
         echo "SSH start cancelled"
@@ -78,7 +106,13 @@ start()
     fi
 
     printf "Starting %s: " "$DAEMON_NAME"
-    "$START_STOP_DAEMON" --start --pidfile "$PIDFILE" --exec "$DAEMON"
+    if [ -n "$SSHD_HOSTKEY_ARGS" ]; then
+        # Intentional word splitting: each -h/path pair is a separate sshd arg.
+        # shellcheck disable=SC2086
+        "$START_STOP_DAEMON" --start --pidfile "$PIDFILE" --exec "$DAEMON" -- $SSHD_HOSTKEY_ARGS
+    else
+        "$START_STOP_DAEMON" --start --pidfile "$PIDFILE" --exec "$DAEMON"
+    fi
     status=$?
 
     if [ "$status" -eq 0 ]; then
