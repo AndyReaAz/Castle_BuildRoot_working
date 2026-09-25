@@ -12,8 +12,10 @@ case "$PRODUCT" in
     *) PRODUCT=sound ;;
 esac
 DATA_ROOT="${NEXTGEN_DATA_ROOT:-/opt/nextgen/data/$PRODUCT}"
-SETTINGS0="${NEXTGEN_SETTINGS0:-$DATA_ROOT/SettingsJSON0.dat}"
-SETTINGS1="${NEXTGEN_SETTINGS1:-$DATA_ROOT/SettingsJSON1.dat}"
+SETTINGS0="${NEXTGEN_SETTINGS0:-$DATA_ROOT/Settings0.json}"
+SETTINGS1="${NEXTGEN_SETTINGS1:-$DATA_ROOT/Settings1.json}"
+LEGACY_SETTINGS0="${NEXTGEN_LEGACY_SETTINGS0:-$DATA_ROOT/SettingsJSON0.dat}"
+LEGACY_SETTINGS1="${NEXTGEN_LEGACY_SETTINGS1:-$DATA_ROOT/SettingsJSON1.dat}"
 
 MTP_PID=/run/umtprd.pid
 MTP_LOG="$LOG_DIR/umtprd.log"
@@ -315,7 +317,7 @@ select_settings_file()
     best_file=""
     best_count=""
 
-    for file in "$SETTINGS0" "$SETTINGS1"; do
+    for file in "$SETTINGS0" "$SETTINGS1" "$LEGACY_SETTINGS0" "$LEGACY_SETTINGS1"; do
         settings_valid "$file" || continue
         count="$(settings_count "$file")" || continue
 
