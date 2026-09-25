@@ -169,6 +169,14 @@ build_product()
     NEXTGEN_KERNEL_PROFILE="$KERNEL_PROFILE" \
         make -C "$ROOT" O="$out" "$@"
 
+    if [ "$PROFILE" = "6.18-nand" ]; then
+        [ -f "$out/images/rootfs.ubi" ] || {
+            echo "error: NAND-root profile did not produce $out/images/rootfs.ubi" >&2
+            exit 1
+        }
+        printf 'NAND rootfs image:      %s\n' "$out/images/rootfs.ubi"
+    fi
+
     printf 'Built product:          %s\n' "$product"
     printf 'Built kernel profile:   %s\n' "$PROFILE"
     printf 'Profile marker:         /etc/nextgen-kernel-profile\n'
