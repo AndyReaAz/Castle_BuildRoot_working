@@ -72,6 +72,25 @@ UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
 UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
 MKENVIMAGE="${NEXTGEN_MKENVIMAGE:-$WORKSPACE_DIR/u-boot/build-fast/tools/mkenvimage}"
 
+if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "ro-persist-v1" ]; then
+    [ -z "$UBOOT_ENV_SOURCE" ] || {
+        echo "error: RO-root image refuses a prebuilt NEXTGEN_UBOOT_ENV override" >&2
+        exit 1
+    }
+    [ -f "$UBOOT_ENV_TEXT" ] || {
+        echo "error: RO-root U-Boot environment source is missing: $UBOOT_ENV_TEXT" >&2
+        exit 1
+    }
+    grep -q 'root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait' "$UBOOT_ENV_TEXT" || {
+        echo "error: RO-root U-Boot environment does not select read-only SquashFS p2" >&2
+        exit 1
+    }
+    grep -q 'nextgen.env=sd-ro' "$UBOOT_ENV_TEXT" || {
+        echo "error: RO-root U-Boot environment is missing nextgen.env=sd-ro" >&2
+        exit 1
+    }
+fi
+
 rm -f "$BINARIES_DIR/uboot.env"
 if [ -n "$UBOOT_ENV_SOURCE" ]; then
     [ -f "$UBOOT_ENV_SOURCE" ] || {
