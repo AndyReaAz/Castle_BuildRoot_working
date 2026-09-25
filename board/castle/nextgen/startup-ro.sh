@@ -171,10 +171,17 @@ elif [ -f "$PENDING" ]; then
     case "$version" in ''|*[!0-9]*) pending_ok=0 ;; esac
     [ -z "$extra" ] || pending_ok=0
 
+    accepted_state=
     if [ "$pending_ok" -eq 1 ]; then
         [ "$(nextgen_slot_version "$new" 2>/dev/null || true)" = "$version" ] ||
             pending_ok=0
         nextgen_slot_valid "$new" || pending_ok=0
+
+        accepted_state="$(read_state_ref "$ACCEPTED" 2>/dev/null || true)"
+        if [ "$accepted_state" != "$new $version" ]; then
+            set -- $accepted_state
+            [ "$#" -eq 2 ] && [ "$1" = "$old" ] || pending_ok=0
+        fi
     fi
 
     if [ "$pending_ok" -ne 1 ]; then
@@ -182,7 +189,7 @@ elif [ -f "$PENDING" ]; then
         mark_rollback
         choice="$(choose_known_good "$old" "$new" 2>/dev/null || true)"
     else
-        accepted_line="$(cat "$ACCEPTED" 2>/dev/null || true)"
+        accepted_line="$accepted_state"
         booting="$(cat "$BOOTING" 2>/dev/null || true)"
 
         if [ "$accepted_line" = "$new $version" ]; then
