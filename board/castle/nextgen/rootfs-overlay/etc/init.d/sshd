@@ -8,7 +8,7 @@ PIDFILE="${NEXTGEN_SSH_PIDFILE:-/var/run/$DAEMON_NAME.pid}"
 RUNTIME_DIR="${NEXTGEN_SSH_RUNTIME_DIR:-/run}"
 START_LOCK="$RUNTIME_DIR/nextgen-sshd-start.lock"
 STOP_MARK="$RUNTIME_DIR/nextgen-sshd-stop.pending"
-STORAGE_SCHEMA="$(cat /etc/nextgen-storage-schema 2>/dev/null || true)"
+STORAGE_SCHEMA="${NEXTGEN_STORAGE_SCHEMA:-$(cat /etc/nextgen-storage-schema 2>/dev/null || true)}"
 PERSIST_KEY_DIR="${NEXTGEN_SSH_KEY_DIR:-/persist/os/ssh}"
 SSHD_HOSTKEY_ARGS=
 
