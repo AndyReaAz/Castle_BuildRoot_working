@@ -410,11 +410,19 @@ build_product()
                 export NEXTGEN_PROVISION_BUNDLE_DIR
             fi
         fi
-        grep -q '^BR2_PACKAGE_MTD=y    if [ "$STORAGE_SCHEMA" = "ro-persist-v1" ]; then
+        grep -q '^BR2_PACKAGE_MTD=y$' "$out/.config" ||
+            { echo "error: bring-up image requires mtd-utils" >&2; exit 1; }
+        grep -q 'post-build-bringup.sh' "$out/.config" ||
+            { echo "error: bring-up post-build hook is not configured" >&2; exit 1; }
+    fi
+
+    if [ "$STORAGE_SCHEMA" = "ro-persist-v1" ]; then
         for sym in \
             BR2_TARGET_ROOTFS_SQUASHFS \
             BR2_TARGET_ROOTFS_SQUASHFS4_LZO \
             BR2_PACKAGE_E2FSPROGS \
+            BR2_PACKAGE_MTD \
+            BR2_PACKAGE_MTD_FSCKUBIFS \
             BR2_PACKAGE_UTIL_LINUX \
             BR2_PACKAGE_UTIL_LINUX_BINARIES \
             BR2_PACKAGE_UTIL_LINUX_PARTX \
