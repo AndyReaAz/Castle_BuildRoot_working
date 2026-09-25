@@ -10,12 +10,12 @@ rm -f "$READY"
 
 awk -v p="$PERSIST" '
     $2 == p {
+        found = 1
         n = split($4, opts, ",")
         for (i = 1; i <= n; i++)
-            if (opts[i] == "rw") exit 0
-        exit 1
+            if (opts[i] == "rw") writable = 1
     }
-    END { if (NR == 0) exit 1 }
+    END { exit (found && writable) ? 0 : 1 }
 ' /proc/mounts || {
     echo "NextGen persist: $PERSIST is not mounted read-write" >&2
     exit 1
