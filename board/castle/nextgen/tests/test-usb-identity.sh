@@ -61,7 +61,9 @@ PY
 
 identity()
 {
-    NEXTGEN_SETTINGS0="$S0"     NEXTGEN_SETTINGS1="$S1"         /bin/sh "$USB_CONTROL" identity
+    product="$1"
+    NEXTGEN_PRODUCT="$product" NEXTGEN_SETTINGS0="$S0" NEXTGEN_SETTINGS1="$S1" \
+        /bin/sh "$USB_CONTROL" identity
 }
 
 assert_identity()
@@ -70,6 +72,8 @@ assert_identity()
     serial="$2"
     manufacturer="$3"
     modeltype="$4"
+    manufacturer_name="$5"
+    product_name="$6"
 
     printf '%s\n' "$output" | grep -qx "SerialNumber=$serial" ||
         { echo "FAIL: serial mismatch: $output" >&2; exit 1; }
@@ -77,19 +81,32 @@ assert_identity()
         { echo "FAIL: manufacturer mismatch: $output" >&2; exit 1; }
     printf '%s\n' "$output" | grep -qx "ModelType=$modeltype" ||
         { echo "FAIL: model type mismatch: $output" >&2; exit 1; }
+    printf '%s\n' "$output" | grep -qx "ManufacturerName=$manufacturer_name" ||
+        { echo "FAIL: manufacturer name mismatch: $output" >&2; exit 1; }
+    printf '%s\n' "$output" | grep -qx "ProductName=$product_name" ||
+        { echo "FAIL: product name mismatch: $output" >&2; exit 1; }
 }
 
 write_fixture "$S0" 10 123456 1 1 1
 write_fixture "$S1" 11 654321 2 3 1
-assert_identity "$(identity)" 654321 2 3
-echo "PASS: newest valid settings generation supplies USB identity"
+assert_identity "$(identity sound)" 654321 2 3 "SKC" "SoundCHEK PRO"
+echo "PASS: newest valid settings generation supplies sound USB identity"
 
 write_fixture "$S1" 12 999999 2 3 0
-assert_identity "$(identity)" 123456 1 1
+assert_identity "$(identity sound)" 123456 1 1 "Castle Group" "dBAir"
 echo "PASS: newer malformed settings file is ignored"
 
+write_fixture "$S0" 20 123456 1 128 1
+write_fixture "$S1" 21 234567 3 128 1
+assert_identity "$(identity vibra)" 234567 3 128 "Pulsar Instruments" "vB2"
+echo "PASS: Pulsar vibration USB branding"
+
+write_fixture "$S1" 19 234567 3 128 1
+assert_identity "$(identity vibra)" 123456 1 128 "Castle Group" "VIBA(8)"
+echo "PASS: Castle vibration USB branding"
+
 rm -f "$S0" "$S1"
-assert_identity "$(identity)" 0 0 0
+assert_identity "$(identity sound)" 0 0 0 "Castle Group" "Sonik Meter"
 echo "PASS: missing settings fall back to generic USB identity"
 
 echo "All USB identity tests passed"
