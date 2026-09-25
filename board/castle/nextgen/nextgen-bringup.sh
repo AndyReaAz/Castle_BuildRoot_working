@@ -46,7 +46,7 @@ main()
 
     [ -r /proc/mtd ] || fail "/proc/mtd is unavailable" || return 1
 
-    for label in at91bootstrap uboot uboot-env boot rootfs
+    for label in at91bootstrap uboot uboot-env device-tree kernel rootfs
     do
         require_mtd_label "$label" || return 1
     done
