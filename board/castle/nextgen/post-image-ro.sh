@@ -11,10 +11,14 @@ OUTPUT_DIR="$(CDPATH= cd -- "$BINARIES_DIR/.." && pwd)"
 PERSIST_SEED="$OUTPUT_DIR/nextgen-persist-seed"
 SLOT_SOURCE="$OUTPUT_DIR/nextgen-app-slot-source"
 
-# output trees are incremental. The dedicated RO profile must not leave stale
-# writable-root/NAND artifacts beside the authoritative SquashFS image.
+# output trees are incremental. Remove every RO-derived/deprecated deployable
+# artifact up front so a failed post-image run cannot leave a stale complete
+# image set that looks usable.
 rm -f "$BINARIES_DIR/rootfs.ext2" "$BINARIES_DIR/rootfs.ext3" \
-    "$BINARIES_DIR/rootfs.ext4" "$BINARIES_DIR/rootfs.ubi"
+    "$BINARIES_DIR/rootfs.ext4" "$BINARIES_DIR/rootfs.ubi" \
+    "$BINARIES_DIR/persist.ext4" "$BINARIES_DIR/sdcard.img" \
+    "$BINARIES_DIR/nextgen-image-manifest.sha256" \
+    "$BINARIES_DIR/write-sd-card.sh"
 
 STAGED_PRODUCT="$(sed -n 's/^product=//p' "$SLOT_SOURCE/bundle.info" 2>/dev/null || true)"
 case "$STAGED_PRODUCT" in sound|vibra) ;; *)
