@@ -199,11 +199,11 @@ elif [ -f "$PENDING" ]; then
         elif [ "$booting" = "$new" ]; then
             echo "NextGen launcher: candidate did not accept; rolling back"
             mark_rollback
-            choice="$(choose_known_good "$old" 2>/dev/null || true)"
+            choice="$(choose_known_good "$old" "$new" 2>/dev/null || true)"
         else
             echo "NextGen launcher: inconsistent boot marker; rolling back"
             mark_rollback
-            choice="$(choose_known_good "$old" 2>/dev/null || true)"
+            choice="$(choose_known_good "$old" "$new" 2>/dev/null || true)"
         fi
     fi
 else
