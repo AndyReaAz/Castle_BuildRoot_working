@@ -1,9 +1,259 @@
 #!/bin/sh
-set -eu
+set -u
 
-# Destructive NOR/NAND writes are deliberately not armed until the production
-# no-SD AT91Bootstrap/U-Boot/NAND-UBI boot chain is defined and validated.
-# Exit 64 is a deliberate "not armed" state; the operator UI displays yellow
-# and can never display the green production-pass screen.
-echo "BRINGUP: production storage programming is not armed in this build" >&2
-exit 64
+BUNDLE=/opt/nextgen/provision
+ARM_MARKER=/etc/nextgen-provision-armed
+TMP=/tmp/nextgen-provision
+UBOOT_TRAILER_OFFSET=$((0x137ff0))
+
+log()
+{
+    echo "BRINGUP: $*"
+}
+
+not_armed()
+{
+    log "production storage programming is not armed in this build"
+    return 64
+}
+
+fail()
+{
+    log "storage provisioning failed: $*" >&2
+    return 1
+}
+
+mtd_by_label()
+{
+    label="$1"
+    line="$(grep " \"$label\"$" /proc/mtd 2>/dev/null | head -n 1)"
+    [ -n "$line" ] || return 1
+    name="${line%%:*}"
+    printf '/dev/%s\n' "$name"
+}
+
+mtd_size_hex()
+{
+    label="$1"
+    line="$(grep " \"$label\"$" /proc/mtd 2>/dev/null | head -n 1)"
+    [ -n "$line" ] || return 1
+    set -- $line
+    printf '%s\n' "$2"
+}
+
+require_mtd_size()
+{
+    label="$1"
+    expected="$2"
+    got="$(mtd_size_hex "$label")" || {
+        fail "missing MTD partition: $label"
+        return 1
+    }
+    [ "$((0x$got))" -eq "$((expected))" ] || {
+        fail "$label size mismatch: 0x$got != $(printf '0x%x' "$expected")"
+        return 1
+    }
+}
+
+hash_file()
+{
+    sha256sum "$1" | awk '{print $1}'
+}
+
+verify_readback()
+{
+    dev="$1"
+    offset="$2"
+    source="$3"
+    name="$4"
+    bytes="$(wc -c < "$source" | tr -d '[:space:]')"
+    out="$TMP/$name.readback"
+
+    rm -f "$out"
+    mtd_debug read "$dev" "$offset" "$bytes" "$out" >/dev/null || {
+        fail "could not read back $name"
+        return 1
+    }
+
+    [ "$(hash_file "$source")" = "$(hash_file "$out")" ] || {
+        fail "$name readback hash mismatch"
+        return 1
+    }
+}
+
+find_ubi_for_mtd()
+{
+    mtddev="$1"
+    mtdnum="${mtddev#/dev/mtd}"
+    for p in /sys/class/ubi/ubi[0-9]*
+    do
+        [ -f "$p/mtd_num" ] || continue
+        [ "$(cat "$p/mtd_num")" = "$mtdnum" ] || continue
+        basename "$p"
+        return 0
+    done
+    return 1
+}
+
+verify_ubi_payload()
+{
+    rootdev="$1"
+    mountpoint="$TMP/rootfs"
+
+    ubiattach -p "$rootdev" >/dev/null || {
+        fail "could not attach programmed rootfs UBI"
+        return 1
+    }
+
+    ubidev="$(find_ubi_for_mtd "$rootdev")" || {
+        fail "could not identify attached rootfs UBI device"
+        ubidetach -p "$rootdev" >/dev/null 2>&1 || true
+        return 1
+    }
+
+    mkdir -p "$mountpoint"
+    mount -t ubifs "$ubidev:rootfs" "$mountpoint" || {
+        fail "could not mount programmed rootfs volume"
+        ubidetach -p "$rootdev" >/dev/null 2>&1 || true
+        return 1
+    }
+
+    rc=0
+    [ -s "$mountpoint/boot/zImage" ] || rc=1
+    [ -s "$mountpoint/boot/nextgen.dtb" ] || rc=1
+    [ -r "$mountpoint/etc/nextgen-storage-schema" ] || rc=1
+    if [ "$rc" -eq 0 ]; then
+        [ "$(cat "$mountpoint/etc/nextgen-storage-schema")" = "flash-ubi-v1" ] || rc=1
+    fi
+
+    umount "$mountpoint" || rc=1
+    ubidetach -p "$rootdev" >/dev/null || rc=1
+
+    [ "$rc" -eq 0 ] || {
+        fail "programmed UBI payload failed content verification"
+        return 1
+    }
+}
+
+main()
+{
+    [ -f "$ARM_MARKER" ] || {
+        not_armed
+        return $?
+    }
+
+    for cmd in sha256sum awk grep head wc tr flash_erase mtd_debug ubiformat ubiattach ubidetach mount umount
+    do
+        command -v "$cmd" >/dev/null 2>&1 || {
+            fail "required command is unavailable: $cmd"
+            return 1
+        }
+    done
+
+    [ -d "$BUNDLE" ] || {
+        fail "production provisioning bundle is missing"
+        return 1
+    }
+    [ -r "$BUNDLE/manifest.sha256" ] || {
+        fail "production provisioning manifest is missing"
+        return 1
+    }
+
+    (
+        cd "$BUNDLE" &&
+        sha256sum -c manifest.sha256
+    ) >/dev/null || {
+        fail "production provisioning bundle hash verification failed"
+        return 1
+    }
+
+    . "$BUNDLE/layout.env"
+    [ "${NEXTGEN_PROVISION_BUNDLE:-}" = "1" ] || {
+        fail "invalid provisioning bundle layout metadata"
+        return 1
+    }
+
+    require_mtd_size at91bootstrap "$((0x00008000))" || return 1
+    require_mtd_size uboot "$((0x00138000))" || return 1
+    require_mtd_size uboot-env "$((0x00020000))" || return 1
+    require_mtd_size rootfs "$((0x08000000))" || return 1
+
+    [ "${NOR_UBOOT_TRAILER_OFFSET:-}" = "0x00137ff0" ] || {
+        fail "unexpected U-Boot trailer offset in bundle"
+        return 1
+    }
+
+    at91dev="$(mtd_by_label at91bootstrap)" || return 1
+    ubootdev="$(mtd_by_label uboot)" || return 1
+    envdev="$(mtd_by_label uboot-env)" || return 1
+    rootdev="$(mtd_by_label rootfs)" || return 1
+
+    rm -rf "$TMP"
+    mkdir -p "$TMP"
+
+    # Program and verify NAND first. Until NOR is changed, the existing boot
+    # chain remains intact and the service SD card remains bootable.
+    log "formatting production NAND rootfs UBI"
+    ubidetach -p "$rootdev" >/dev/null 2>&1 || true
+    ubiformat "$rootdev" -y -f "$BUNDLE/rootfs.ubi" || {
+        fail "ubiformat failed for rootfs"
+        return 1
+    }
+    verify_ubi_payload "$rootdev" || return 1
+
+    # Replace U-Boot before bootstrap. The production U-Boot is deliberately
+    # <= 0xA0000 bytes so the old fixed-window bootstrap can still load it if
+    # power disappears before the new bootstrap is written.
+    log "programming NOR U-Boot"
+    flash_erase "$ubootdev" 0 0 >/dev/null || {
+        fail "could not erase U-Boot partition"
+        return 1
+    }
+    uboot_bytes="$(wc -c < "$BUNDLE/u-boot.bin" | tr -d '[:space:]')"
+    [ "$uboot_bytes" -le $((0x0a0000)) ] || {
+        fail "U-Boot exceeds migration-safe 640 KiB window"
+        return 1
+    }
+    mtd_debug write "$ubootdev" 0 "$uboot_bytes" "$BUNDLE/u-boot.bin" >/dev/null || {
+        fail "could not program U-Boot"
+        return 1
+    }
+    mtd_debug write "$ubootdev" "$UBOOT_TRAILER_OFFSET" 16 "$BUNDLE/u-boot.trailer" >/dev/null || {
+        fail "could not program U-Boot length trailer"
+        return 1
+    }
+    verify_readback "$ubootdev" 0 "$BUNDLE/u-boot.bin" u-boot || return 1
+    verify_readback "$ubootdev" "$UBOOT_TRAILER_OFFSET" "$BUNDLE/u-boot.trailer" u-boot-trailer || return 1
+
+    # Remove any legacy or test environment. The production defaults are
+    # compiled into U-Boot; first saveenv will establish redundant copies.
+    log "erasing NOR U-Boot environment"
+    flash_erase "$envdev" 0 0 >/dev/null || {
+        fail "could not erase U-Boot environment"
+        return 1
+    }
+
+    # Bootstrap is last: after this point ROM boots the new NOR chain.
+    log "programming NOR AT91Bootstrap"
+    flash_erase "$at91dev" 0 0 >/dev/null || {
+        fail "could not erase AT91Bootstrap partition"
+        return 1
+    }
+    at91_bytes="$(wc -c < "$BUNDLE/at91bootstrap.bin" | tr -d '[:space:]')"
+    [ "$at91_bytes" -le $((0x8000)) ] || {
+        fail "AT91Bootstrap exceeds 32 KiB partition"
+        return 1
+    }
+    mtd_debug write "$at91dev" 0 "$at91_bytes" "$BUNDLE/at91bootstrap.bin" >/dev/null || {
+        fail "could not program AT91Bootstrap"
+        return 1
+    }
+    verify_readback "$at91dev" 0 "$BUNDLE/at91bootstrap.bin" at91bootstrap || return 1
+
+    sync
+    log "production storage programming and readback verification complete"
+    return 0
+}
+
+main
+exit $?
