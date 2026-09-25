@@ -9,6 +9,7 @@ PRODUCT="${NEXTGEN_PRODUCT:-sound}"
 KERNEL_BUILD_DIR="${NEXTGEN_KERNEL_BUILD_DIR:-$WORKSPACE_DIR/linux-working/build-fast}"
 KERNEL_MODULES_ROOT="${NEXTGEN_KERNEL_MODULES_ROOT:-$KERNEL_BUILD_DIR/mods/lib/modules}"
 STORAGE_SCHEMA="${NEXTGEN_STORAGE_SCHEMA:-legacy}"
+STORAGE_BACKEND="${NEXTGEN_STORAGE_BACKEND:-legacy}"
 COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
 DEV_SEED="$SCRIPT_DIR/dev-seed"
 
@@ -33,6 +34,7 @@ KERNEL_PROFILE="${NEXTGEN_KERNEL_PROFILE:-unspecified}"
 printf '%s\n' "$KERNEL_PROFILE" > "$TARGET_DIR/etc/nextgen-kernel-profile"
 printf '%s\n' "$PRODUCT" > "$TARGET_DIR/etc/nextgen-product"
 printf '%s\n' "$STORAGE_SCHEMA" > "$TARGET_DIR/etc/nextgen-storage-schema"
+printf '%s\n' "$STORAGE_BACKEND" > "$TARGET_DIR/etc/nextgen-storage-backend"
 
 # Fail the image build before staging if any platform-owned shell helper is
 # syntactically invalid. These scripts run under BusyBox ash on the meter and
@@ -59,12 +61,21 @@ done
 EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.6.23-linux4microchip-2024.04+}"
 
 case "$STORAGE_SCHEMA" in
-    legacy) ;;
+    legacy)
+        ;;
     ro-persist-v1)
         [ -r "$KERNEL_BUILD_DIR/.config" ] || {
             echo "error: RO-root profile has no external kernel .config: $KERNEL_BUILD_DIR/.config" >&2
             exit 1
         }
+        case "$STORAGE_BACKEND" in
+            sd-ext4|nand-ubi) ;;
+            *)
+                echo "error: ro-persist-v1 requires sd-ext4 or nand-ubi backend" >&2
+                exit 1
+                ;;
+        esac
+
         for sym in BLK_DEV_LOOP SQUASHFS SQUASHFS_LZO; do
             grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
                 echo "error: RO-root profile requires CONFIG_${sym}=y in $KERNEL_BUILD_DIR/.config" >&2
@@ -72,34 +83,35 @@ case "$STORAGE_SCHEMA" in
                 exit 1
             }
         done
-        ;;
-    flash-ubi-v1)
-        [ -r "$KERNEL_BUILD_DIR/.config" ] || {
-            echo "error: flash profile has no external kernel .config: $KERNEL_BUILD_DIR/.config" >&2
-            exit 1
-        }
 
-        # Everything needed to reach and mount rootfs must be built in.
-        for sym in SPI SPI_ATMEL SPI_ATMEL_QUADSPI MTD MTD_SPI_NAND MTD_UBI UBIFS_FS; do
-            grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
-                echo "error: flash profile requires CONFIG_${sym}=y in $KERNEL_BUILD_DIR/.config" >&2
-                echo "       flash-root storage cannot depend on a module from the rootfs it is trying to mount" >&2
+        if [ "$STORAGE_BACKEND" = sd-ext4 ]; then
+            grep -q '^CONFIG_EXT4_FS=y$' "$KERNEL_BUILD_DIR/.config" || {
+                echo "error: SD RO-root backend requires CONFIG_EXT4_FS=y" >&2
                 exit 1
             }
-        done
-
-        # SPI NOR is only needed later for factory identity/environment access,
-        # so it may remain a module. Linux must however expose 4 KiB erase units:
-        # the ratified NOR partition boundary at 0x8000 is not 64 KiB aligned.
-        grep -Eq '^CONFIG_MTD_SPI_NOR=(y|m)$' "$KERNEL_BUILD_DIR/.config" || {
-            echo "error: flash profile requires CONFIG_MTD_SPI_NOR=y or m" >&2
+        else
+            for sym in SPI SPI_ATMEL SPI_ATMEL_QUADSPI MTD MTD_SPI_NAND MTD_UBI MTD_UBI_BLOCK UBIFS_FS UBIFS_FS_LZO; do
+                grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
+                    echo "error: NAND RO-root backend requires CONFIG_${sym}=y" >&2
+                    exit 1
+                }
+            done
+            grep -Eq '^CONFIG_MTD_SPI_NOR=(y|m)$' "$KERNEL_BUILD_DIR/.config" || {
+                echo "error: NAND backend requires SPI-NOR support for factory boot state" >&2
+                exit 1
+            }
+            grep -q '^CONFIG_MTD_SPI_NOR_USE_4K_SECTORS=y$' "$KERNEL_BUILD_DIR/.config" || {
+                echo "error: NAND backend requires 4 KiB SPI-NOR erase support" >&2
+                exit 1
+            }
+        fi
+        ;;
+    bringup-sd-v1)
+        case "$STORAGE_BACKEND" in bringup-sd) ;; *)
+            echo "error: bringup-sd-v1 requires bringup-sd backend" >&2
             exit 1
-        }
-        grep -q '^CONFIG_MTD_SPI_NOR_USE_4K_SECTORS=y$' "$KERNEL_BUILD_DIR/.config" || {
-            echo "error: flash profile requires CONFIG_MTD_SPI_NOR_USE_4K_SECTORS=y" >&2
-            echo "       the 32 KiB AT91Bootstrap / 0x8000 U-Boot boundary must remain writable from Linux" >&2
-            exit 1
-        }
+            ;;
+        esac
         ;;
     *)
         echo "error: unknown NextGen storage schema: $STORAGE_SCHEMA" >&2
