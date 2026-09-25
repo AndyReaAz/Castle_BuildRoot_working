@@ -228,6 +228,19 @@ if [ "$PROFILE" = "6.18-bringup" ]; then
     done
 fi
 
+if [ "$PROFILE" = "6.18-flash" ]; then
+    for script in \
+        board/castle/nextgen/post-build.sh \
+        board/castle/nextgen/post-image.sh \
+        board/castle/nextgen/make-production-provision-bundle.sh
+    do
+        /bin/sh -n "$ROOT/$script" || {
+            echo "error: invalid production-flash shell script: $script" >&2
+            exit 1
+        }
+    done
+fi
+
 if [ "$PROFILE" = "6.18-ro" ]; then
     [ -r "$KERNEL_BUILD_DIR/.config" ] || {
         echo "error: RO-root kernel has no .config: $KERNEL_BUILD_DIR/.config" >&2
