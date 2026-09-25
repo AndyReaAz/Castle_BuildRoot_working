@@ -2,8 +2,8 @@
 
 # Keep the device runtime helpers directly accessible.
 case ":$PATH:" in
-    *:/root/Exec:*) ;;
-    *) PATH="$PATH:/root/Exec" ;;
+    *:/opt/nextgen/platform/bin:*) ;;
+    *) PATH="$PATH:/opt/nextgen/platform/bin" ;;
 esac
 export PATH
 
@@ -18,6 +18,7 @@ alias duh='du -h'
 
 # Useful interactive history without rewriting it on every command.
 HISTCONTROL=ignoredups:erasedups
+HISTFILE=/run/root-bash-history
 HISTSIZE=1000
 HISTFILESIZE=2000
 shopt -s histappend
