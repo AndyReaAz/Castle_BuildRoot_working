@@ -8,8 +8,10 @@ WORKSPACE_DIR="$(CDPATH= cd -- "$BUILDROOT_DIR/.." && pwd)"
 APP_DIR="${NEXTGEN_APP_DIR:-$WORKSPACE_DIR/app}"
 OUT_DIR="$(dirname "$TARGET_DIR")"
 PRODUCT="$(cat "$TARGET_DIR/etc/nextgen-product")"
+BACKEND="${NEXTGEN_STORAGE_BACKEND:-$(cat "$TARGET_DIR/etc/nextgen-storage-backend" 2>/dev/null || true)}"
 
 case "$PRODUCT" in sound|vibra) ;; *) echo "error: invalid product $PRODUCT" >&2; exit 1 ;; esac
+case "$BACKEND" in sd-ext4|nand-ubi) ;; *) echo "error: invalid RO storage backend $BACKEND" >&2; exit 1 ;; esac
 
 ROOT="$TARGET_DIR/opt/nextgen"
 OLD_APP="$ROOT/app/$PRODUCT"
@@ -88,7 +90,13 @@ install -m 0755 "$SCRIPT_DIR/nextgen-update-install-ro"     "$ROOT/platform/bin/
 install -m 0755 "$SCRIPT_DIR/nextgen-update-accept-ro"     "$ROOT/platform/bin/nextgen-update-accept"
 
 printf '%s\n' ro-persist-v1 > "$TARGET_DIR/etc/nextgen-storage-schema"
+printf '%s\n' "$BACKEND" > "$TARGET_DIR/etc/nextgen-storage-backend"
 printf '%s\n' 1 > "$TARGET_DIR/etc/nextgen-platform-abi"
+
+rm -f "$TARGET_DIR/etc/nextgen-sd-data-only"
+if [ "$BACKEND" = nand-ubi ]; then
+    : > "$TARGET_DIR/etc/nextgen-sd-data-only"
+fi
 
 # Timezone selection is Settings-owned. Immutable /etc points at runtime
 # files rebuilt by the Application under /run.
@@ -108,7 +116,7 @@ SEEDRNG_ARGS="--seed-dir=/persist/os/seedrng"
 EOF
 
 cat > "$TARGET_DIR/etc/fstab" <<'EOF'
-# NextGen RO-root test layout
+# NextGen immutable-system layout
 /dev/root       /           squashfs ro,noauto                                      0 0
 proc            /proc       proc     defaults                                       0 0
 devpts          /dev/pts    devpts   defaults,gid=5,mode=620,ptmxmode=0666          0 0
@@ -122,10 +130,21 @@ tmpfs           /var/tmp    tmpfs    mode=1777,nosuid,nodev                     
 sysfs           /sys        sysfs    defaults                                       0 0
 configfs        /sys/kernel/config configfs defaults                                 0 0
 debugfs         /sys/kernel/debug  debugfs  defaults                                 0 0
+EOF
+
+case "$BACKEND" in
+    sd-ext4)
+        cat >> "$TARGET_DIR/etc/fstab" <<'EOF'
 /dev/mmcblk0p3  /persist    ext4     rw,noatime,nosuid,nodev,errors=remount-ro       0 2
 /dev/mmcblk0p1  /boot       vfat     defaults,noauto                                0 2
 EOF
-
+        ;;
+    nand-ubi)
+        cat >> "$TARGET_DIR/etc/fstab" <<'EOF'
+ubi0:persist    /persist    ubifs    rw,noatime,nosuid,nodev                         0 0
+EOF
+        ;;
+esac
 # Buildroot's RO-root Kconfig must have commented the generic remount-rw line.
 if grep -q '^[^#].*-o remount,rw /$' "$TARGET_DIR/etc/inittab"; then
     echo "error: RO image still remounts / read-write" >&2
@@ -144,6 +163,7 @@ do
     }
 done
 
-/bin/sh "$SCRIPT_DIR/verify-target-ro-layout.sh"     "$TARGET_DIR" "$PERSIST_SEED" "$SLOT_SOURCE" "$PRODUCT"
+/bin/sh "$SCRIPT_DIR/verify-target-ro-layout.sh" \
+    "$TARGET_DIR" "$PERSIST_SEED" "$SLOT_SOURCE" "$PRODUCT" "$BACKEND"
 
-echo "NextGen RO-root staging complete: product=$PRODUCT version=$VERSION"
+echo "NextGen RO-root staging complete: product=$PRODUCT backend=$BACKEND version=$VERSION"
