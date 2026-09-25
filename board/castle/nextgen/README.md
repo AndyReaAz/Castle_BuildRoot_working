@@ -188,8 +188,18 @@ U-Boot       chatgpt/ro-root-image-slots
 AT91Bootstrap existing fast-boot build
 ```
 
-Rebuild Linux 6.18 from the RO branch first. Buildroot refuses to emit the RO
-image unless the selected external kernel has these built in:
+Rebuild Linux 6.18 from the RO branch first. The branch's
+`build-fast.sh` also refreshes the module staging tree expected by Buildroot
+at `../staging/linux-6.18-modules`, so there is no separate
+`modules_install` step:
+
+```sh
+cd ../linux-6.18
+KERNEL_BASE_CONFIG=../linux-at91/.config ./build-fast.sh rebuild
+```
+
+Buildroot refuses to emit the RO image unless the selected external kernel has
+these built in:
 
 ```text
 CONFIG_BLK_DEV_LOOP=y
