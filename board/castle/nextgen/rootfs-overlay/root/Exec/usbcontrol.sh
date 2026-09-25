@@ -6,7 +6,11 @@ FUNCTIONFS=/dev/ffs-mtp
 USB_COMMON=/opt/nextgen/platform/bin/usb-gadget-common.sh
 LOG_DIR=/run/log
 
-PRODUCT="$(cat /etc/nextgen-product 2>/dev/null || echo sound)"
+PRODUCT="${NEXTGEN_PRODUCT:-$(cat /etc/nextgen-product 2>/dev/null || echo sound)}"
+case "$PRODUCT" in
+    sound|vibra) ;;
+    *) PRODUCT=sound ;;
+esac
 DATA_ROOT="${NEXTGEN_DATA_ROOT:-/opt/nextgen/data/$PRODUCT}"
 SETTINGS0="${NEXTGEN_SETTINGS0:-$DATA_ROOT/SettingsJSON0.dat}"
 SETTINGS1="${NEXTGEN_SETTINGS1:-$DATA_ROOT/SettingsJSON1.dat}"
@@ -215,65 +219,47 @@ read_gadget_identity()
     fi
 }
 
+usb_manufacturer_name()
+{
+    case "$MANUFACTURER" in
+        2) echo "SKC" ;;
+        3) echo "Pulsar Instruments" ;;
+        4) echo "Cirrus Research" ;;
+        *) echo "Castle Group" ;;
+    esac
+}
+
+usb_product_name()
+{
+    if [ "$PRODUCT" = vibra ]; then
+        # Match the vibration Application's current public model naming.
+        case "$MANUFACTURER" in
+            1) echo "VIBA(8)" ;;
+            3) echo "vB2" ;;
+            *) echo "Triax" ;;
+        esac
+    elif [ "$MANUFACTURER" -eq 2 ]; then
+        case "$MODELTYPE" in
+            3) echo "SoundCHEK PRO" ;;
+            *) echo "SoundCHEK" ;;
+        esac
+    else
+        case "$MODELTYPE" in
+            1) echo "dBAir" ;;
+            2) echo "dBAngel" ;;
+            3) echo "dBAir Pro" ;;
+            *) echo "Sonik Meter" ;;
+        esac
+    fi
+}
+
 write_gadget_identity()
 {
     read_gadget_identity
 
     printf "%06d\n" "$SERIALNUMBER" > "$GADGET/strings/0x409/serialnumber"
-
-    case "$MANUFACTURER" in
-        2)
-            echo "SKC"
-            ;;
-        3)
-            echo "Pulsar Instruments"
-            ;;
-        4)
-            echo "Cirrus Research"
-            ;;
-        *)
-            echo "Castle Group"
-            ;;
-    esac > "$GADGET/strings/0x409/manufacturer"
-
-    if [ "$PRODUCT" = vibra ]; then
-        # Match the vibration Application's current public model naming.
-        case "$MANUFACTURER" in
-            1)
-                echo "VIBA(8)"
-                ;;
-            3)
-                echo "vB2"
-                ;;
-            *)
-                echo "Triax"
-                ;;
-        esac
-    elif [ "$MANUFACTURER" -eq 2 ]; then
-        case "$MODELTYPE" in
-            3)
-                echo "SoundCHEK PRO"
-                ;;
-            *)
-                echo "SoundCHEK"
-                ;;
-        esac
-    else
-        case "$MODELTYPE" in
-            1)
-                echo "dBAir"
-                ;;
-            2)
-                echo "dBAngel"
-                ;;
-            3)
-                echo "dBAir Pro"
-                ;;
-            *)
-                echo "Sonik Meter"
-                ;;
-        esac
-    fi > "$GADGET/strings/0x409/product"
+    usb_manufacturer_name > "$GADGET/strings/0x409/manufacturer"
+    usb_product_name > "$GADGET/strings/0x409/product"
 }
 
 load_gadget_modules()
@@ -779,6 +765,8 @@ case "$1" in
         echo "SerialNumber=$SERIALNUMBER"
         echo "Manufacturer=$MANUFACTURER"
         echo "ModelType=$MODELTYPE"
+        echo "ManufacturerName=$(usb_manufacturer_name)"
+        echo "ProductName=$(usb_product_name)"
         ;;
 
     mask)
