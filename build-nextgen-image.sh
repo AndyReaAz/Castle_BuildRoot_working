@@ -422,7 +422,7 @@ build_product()
             exit 1
         }
         bundle="$out/images/provision-bundle"
-        "$ROOT/board/castle/nextgen/make-production-provision-bundle.sh" \
+        /bin/sh "$ROOT/board/castle/nextgen/make-production-provision-bundle.sh" \
             "$bundle" "$prod_at91" "$prod_uboot" "$out/images/rootfs.ubi"
         printf 'Provisioning bundle:    %s\n' "$bundle"
     fi
