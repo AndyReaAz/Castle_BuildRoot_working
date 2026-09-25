@@ -138,9 +138,8 @@ done
 [ -d "$COMMON_STATE" ] || fail "common state directory is missing"
 [ -d "$STATE" ] || fail "realm state directory is missing"
 
-# The current development sound image is deliberately factory/test seeded by
-# rootfs-overlay-dev.  Catch any future layout migration that deletes the
-# historical /root/Exec overlay before importing these mutable files.
+# Development sound images are deliberately factory/test seeded from the
+# explicit build-time dev-seed tree.
 if [ "$PRODUCT" = sound ]; then
     for seed in Settings0.json Settings1.json CalFile.json FacCalFile.json FTPQueue.json; do
         [ -s "$DATA/$seed" ] || fail "development sound seed $seed is missing or empty"
@@ -149,9 +148,9 @@ if [ "$PRODUCT" = sound ]; then
         [ ! -e "$DATA/$obsolete" ] ||
             fail "obsolete mutable state $obsolete survived staging"
     done
-    [ -f "$COMMON_STATE/engmode" ] ||
-        fail "development engineering-mode seed is missing"
 fi
+[ -f "$COMMON_STATE/engmode" ] ||
+    fail "development engineering-mode seed is missing"
 [ -r "$STATE/accepted" ] || fail "initial accepted-slot record is missing"
 
 version="$(sed -n 's/^version=//p' "$APP/slotA/bundle.info")"
