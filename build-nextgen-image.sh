@@ -188,7 +188,9 @@ if [ "$PROFILE" = "6.18-ro" ]; then
         board/castle/nextgen/post-image-ro.sh \
         board/castle/nextgen/verify-target-ro-layout.sh \
         board/castle/nextgen/write-sd-card-ro.sh \
-        board/castle/nextgen/tests/test-update-state.sh
+        board/castle/nextgen/tests/test-update-state.sh \
+        board/castle/nextgen/tests/test-sshd-start.sh \
+        board/castle/nextgen/tests/test-usb-identity.sh
     do
         /bin/sh -n "$ROOT/$script" || {
             echo "error: invalid RO-root shell script: $script" >&2
@@ -196,10 +198,12 @@ if [ "$PROFILE" = "6.18-ro" ]; then
         }
     done
 
-    /bin/sh "$ROOT/board/castle/nextgen/tests/test-update-state.sh" || {
-        echo "error: RO-root Application image state-machine tests failed" >&2
-        exit 1
-    }
+    for test in test-update-state.sh test-sshd-start.sh test-usb-identity.sh; do
+        /bin/sh "$ROOT/board/castle/nextgen/tests/$test" || {
+            echo "error: RO-root preflight failed: $test" >&2
+            exit 1
+        }
+    done
 fi
 
 # Reapply the project defconfig on every profile build so changes to
