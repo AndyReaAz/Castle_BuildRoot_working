@@ -243,15 +243,41 @@ EOF
     # Redundant U-Boot env byte follows the CRC: active=1, obsolete=0.
     printf '\000' | dd of="$BINARIES_DIR/uboot-env-b.bin" bs=1 seek=4 conv=notrunc 2>/dev/null
 
-    NOR_IMAGE="$BINARIES_DIR/nor.img"
-    rm -f "$NOR_IMAGE"
-    dd if=/dev/zero bs=1048576 count=2 2>/dev/null | tr '\000' '\377' > "$NOR_IMAGE"
-    dd if="$BINARIES_DIR/boot.bin" of="$NOR_IMAGE" bs=1 seek=0 conv=notrunc 2>/dev/null
-    dd if="$BINARIES_DIR/u-boot.bin" of="$NOR_IMAGE" bs=1 seek=$((0x8000)) conv=notrunc 2>/dev/null
-    dd if="$BINARIES_DIR/u-boot.nor-trailer" of="$NOR_IMAGE" bs=1 seek=$((0x13fff0)) conv=notrunc 2>/dev/null
-    dd if="$BINARIES_DIR/uboot-env-a.bin" of="$NOR_IMAGE" bs=1 seek=$((0x140000)) conv=notrunc 2>/dev/null
-    dd if="$BINARIES_DIR/uboot-env-b.bin" of="$NOR_IMAGE" bs=1 seek=$((0x150000)) conv=notrunc 2>/dev/null
+    make_erased_image()
+    {
+        output="$1"
+        bytes="$2"
+        rm -f "$output"
+        dd if=/dev/zero bs="$bytes" count=1 2>/dev/null | tr '\000' '\377' > "$output"
+    }
 
+    NOR_AT91="$BINARIES_DIR/nor-at91bootstrap.bin"
+    NOR_UBOOT="$BINARIES_DIR/nor-uboot.bin"
+    NOR_ENV="$BINARIES_DIR/nor-uboot-env.bin"
+    NOR_IMAGE="$BINARIES_DIR/nor.img"
+
+    make_erased_image "$NOR_AT91" $((0x8000))
+    dd if="$BINARIES_DIR/boot.bin" of="$NOR_AT91" bs=1 seek=0 conv=notrunc 2>/dev/null
+
+    make_erased_image "$NOR_UBOOT" $((0x138000))
+    dd if="$BINARIES_DIR/u-boot.bin" of="$NOR_UBOOT" bs=1 seek=0 conv=notrunc 2>/dev/null
+    dd if="$BINARIES_DIR/u-boot.nor-trailer" of="$NOR_UBOOT" bs=1 seek=$((0x137ff0)) conv=notrunc 2>/dev/null
+
+    make_erased_image "$NOR_ENV" $((0x20000))
+    dd if="$BINARIES_DIR/uboot-env-a.bin" of="$NOR_ENV" bs=1 seek=0 conv=notrunc 2>/dev/null
+    dd if="$BINARIES_DIR/uboot-env-b.bin" of="$NOR_ENV" bs=1 seek=$((0x10000)) conv=notrunc 2>/dev/null
+
+    make_erased_image "$NOR_IMAGE" $((0x200000))
+    dd if="$NOR_AT91" of="$NOR_IMAGE" bs=1 seek=0 conv=notrunc 2>/dev/null
+    dd if="$NOR_UBOOT" of="$NOR_IMAGE" bs=1 seek=$((0x8000)) conv=notrunc 2>/dev/null
+    dd if="$NOR_ENV" of="$NOR_IMAGE" bs=1 seek=$((0x140000)) conv=notrunc 2>/dev/null
+
+    [ "$(wc -c < "$NOR_AT91" | tr -d '[:space:]')" -eq $((0x8000)) ] ||
+        { echo "error: generated AT91Bootstrap NOR partition image has wrong size" >&2; exit 1; }
+    [ "$(wc -c < "$NOR_UBOOT" | tr -d '[:space:]')" -eq $((0x138000)) ] ||
+        { echo "error: generated U-Boot NOR partition image has wrong size" >&2; exit 1; }
+    [ "$(wc -c < "$NOR_ENV" | tr -d '[:space:]')" -eq $((0x20000)) ] ||
+        { echo "error: generated U-Boot environment NOR partition image has wrong size" >&2; exit 1; }
     [ "$(wc -c < "$NOR_IMAGE" | tr -d '[:space:]')" -eq $((0x200000)) ] || {
         echo "error: generated NOR image is not exactly 2 MiB" >&2
         exit 1
@@ -261,6 +287,7 @@ EOF
         cd "$BINARIES_DIR"
         sha256sum boot.bin u-boot.bin u-boot.nor-trailer \
             uboot-env-a.bin uboot-env-b.bin nextgen.dtb zImage \
+            nor-at91bootstrap.bin nor-uboot.bin nor-uboot-env.bin \
             boot.ubi rootfs.ubi nor.img > nextgen-flash-manifest.sha256
     )
 
