@@ -21,6 +21,7 @@ install -m 0755 "$SCRIPT_DIR/S01NextGenBringup" \
     "$TARGET_DIR/etc/init.d/S01NextGenBringup"
 
 printf '%s\n' bringup-sd-v1 > "$TARGET_DIR/etc/nextgen-storage-schema"
+printf '%s\n' bringup-sd > "$TARGET_DIR/etc/nextgen-storage-backend"
 printf '%s\n' 1 > "$TARGET_DIR/etc/nextgen-bringup-image"
 
 for script in \
@@ -62,7 +63,7 @@ if [ -n "$BUNDLE_DIR" ]; then
     }
 
     mkdir -p "$TARGET_DIR/opt/nextgen/provision"
-    for artifact in at91bootstrap.bin u-boot.bin u-boot.trailer rootfs.ubi layout.env manifest.sha256
+    for artifact in at91bootstrap.bin u-boot.bin u-boot.trailer boot.ubi rootfs.ubi layout.env manifest.sha256
     do
         [ -f "$BUNDLE_DIR/$artifact" ] || {
             echo "error: provisioning bundle is missing $artifact" >&2
