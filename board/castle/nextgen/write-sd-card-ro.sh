@@ -19,9 +19,18 @@ case "$DEVICE" in /dev/*) ;; *) echo "error: expected whole /dev device" >&2; ex
 BOOT_IMAGE="$IMAGES_DIR/boot.vfat"
 ROOT_IMAGE="$IMAGES_DIR/rootfs.squashfs"
 PERSIST_IMAGE="$IMAGES_DIR/persist.ext4"
-for image in "$BOOT_IMAGE" "$ROOT_IMAGE" "$PERSIST_IMAGE"; do
+MANIFEST="$IMAGES_DIR/nextgen-image-manifest.sha256"
+for image in "$BOOT_IMAGE" "$ROOT_IMAGE" "$PERSIST_IMAGE" "$MANIFEST"; do
     [ -f "$image" ] || { echo "error: missing $image" >&2; exit 1; }
 done
+
+(
+    cd "$IMAGES_DIR"
+    sha256sum -c nextgen-image-manifest.sha256
+) || {
+    echo "error: NextGen image manifest verification failed; refusing to erase $DEVICE" >&2
+    exit 1
+}
 
 if lsblk -nrpo MOUNTPOINT "$DEVICE" 2>/dev/null | grep -q '[^[:space:]]'; then
     echo "error: $DEVICE or one of its partitions is mounted" >&2
