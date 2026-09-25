@@ -49,6 +49,10 @@ grep -qx 'format=4' "$SLOT_SOURCE/bundle.info" ||
     fail "persistent update state missing"
 [ -r "$PERSIST_SEED/state/$PRODUCT/accepted" ] ||
     fail "initial accepted state missing"
+[ -d "$PERSIST_SEED/os/chrony" ] ||
+    fail "persistent chrony state directory missing"
+grep -q 'bind_one "\$PERSIST/os/chrony" /var/lib/chrony' "$ROOT/platform/bin/persist-init.sh" ||
+    fail "chrony state is not rebound to persistent storage"
 
 if [ "$PRODUCT" = sound ]; then
     [ -r "$PERSIST_SEED/data/sound/HPD/hpdc.csv" ] ||
