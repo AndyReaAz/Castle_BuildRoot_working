@@ -78,7 +78,7 @@ mkdir -p "$TARGET_DIR/etc/NetworkManager/system-connections"
 
 # Remove mutable trees from the system image and leave only mount points.
 rm -rf "$ROOT/app" "$ROOT/data" "$ROOT/state" "$ROOT/common/state"
-mkdir -p     "$ROOT/app"     "$ROOT/data"     "$ROOT/state"     "$ROOT/common/state"     "$TARGET_DIR/persist"     "$TARGET_DIR/var/lib"     "$TARGET_DIR/var/log"     "$TARGET_DIR/var/cache"     "$TARGET_DIR/var/tmp"
+mkdir -p     "$ROOT/app"     "$ROOT/data"     "$ROOT/state"     "$ROOT/common/state"     "$TARGET_DIR/persist"     "$TARGET_DIR/sdcard"     "$TARGET_DIR/var/lib"     "$TARGET_DIR/var/log"     "$TARGET_DIR/var/cache"     "$TARGET_DIR/var/tmp"
 
 install -m 0755 "$SCRIPT_DIR/persist-init-ro.sh"     "$ROOT/platform/bin/persist-init.sh"
 install -m 0755 "$SCRIPT_DIR/startup-ro.sh"     "$TARGET_DIR/root/startup.sh"
