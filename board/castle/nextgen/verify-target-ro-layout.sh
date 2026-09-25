@@ -28,6 +28,12 @@ for mountpoint in app data state common/state; do
 done
 [ -d "$TARGET_DIR/sdcard" ] && [ ! -L "$TARGET_DIR/sdcard" ] ||
     fail "immutable /sdcard mount point missing"
+[ -z "$(find "$TARGET_DIR/sdcard" -mindepth 1 -print -quit)" ] ||
+    fail "immutable /sdcard mount point is not empty"
+[ -d "$TARGET_DIR/persist" ] && [ ! -L "$TARGET_DIR/persist" ] ||
+    fail "immutable /persist mount point missing"
+[ -z "$(find "$TARGET_DIR/persist" -mindepth 1 -print -quit)" ] ||
+    fail "immutable /persist mount point is not empty"
 
 [ -d "$ROOT/factory/$PRODUCT" ] || fail "factory Application missing"
 [ -x "$ROOT/factory/$PRODUCT/NextGen" ] || fail "factory NextGen missing"
