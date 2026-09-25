@@ -137,6 +137,9 @@
   "LevelAmberThreshold": 80,
   "LevelRedThreshold": 90,
   "Template": {
+    "FileFormat": "NextGenTemplate",
+    "SchemaVersion": 1,
+    "Product": "sound",
     "FileName": "",
     "ModelCompatibility": 0,
     "Certified": 0,
