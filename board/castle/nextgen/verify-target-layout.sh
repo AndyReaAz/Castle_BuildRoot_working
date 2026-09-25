@@ -74,6 +74,22 @@ if grep -Eq '(^|[^[:alnum:]_])jq([^[:alnum:]_]|$)' "$BIN/usbcontrol.sh"; then
     fail "usbcontrol.sh has an undeclared jq runtime dependency"
 fi
 
+# Exercise the installed helper against the staged alternating settings files.
+# Vibra development images may legitimately have no settings seed yet, in
+# which case usbcontrol.sh must still return the all-zero generic identity.
+USB_IDENTITY="$(
+    NEXTGEN_PRODUCT="$PRODUCT" \
+    NEXTGEN_SETTINGS0="$DATA/SettingsJSON0.dat" \
+    NEXTGEN_SETTINGS1="$DATA/SettingsJSON1.dat" \
+        /bin/sh "$BIN/usbcontrol.sh" identity
+)" || fail "usbcontrol.sh identity parsing failed"
+for field in SerialNumber Manufacturer ModelType; do
+    value="$(printf '%s\n' "$USB_IDENTITY" | sed -n "s/^$field=//p")"
+    case "$value" in
+        ''|*[!0-9]*) fail "usbcontrol.sh returned invalid $field identity" ;;
+    esac
+done
+
 for font in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
     [ -r "$COMMON_SHARE/$font" ] || fail "platform font $font is missing"
 done
