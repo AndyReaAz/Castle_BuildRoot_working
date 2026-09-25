@@ -372,3 +372,57 @@ formats `rootfs` first, then the small boot UBI, writes the redundant NOR
 environment, installs the new AT91Bootstrap, and writes U-Boot last. Making
 U-Boot the final write leaves the old boot path untouched until every storage
 dependency needed by the new production U-Boot has been prepared.
+
+
+## Production NOR + NAND/UBI boot
+
+The production flash schema keeps the two bootloader stages in the 2 MiB SPI NOR
+and uses two independent UBI devices in SPI-NAND:
+
+```text
+SPI NOR
+  0x000000-0x007fff  AT91Bootstrap
+  0x008000-0x13ffff  U-Boot partition
+  0x140000-0x15ffff  redundant U-Boot environment
+
+SPI-NAND
+  0x00000000-0x0087ffff  boot UBI (8.5 MiB)
+      device-tree          static volume
+      kernel               static volume
+  0x00880000-0x0887ffff  rootfs UBI (128 MiB)
+      rootfs               dynamic/autoresize volume
+  remainder                intentionally spare
+```
+
+The boot UBI partition deliberately occupies exactly the old raw DTB + kernel
+area, so the already-used rootfs offset remains `0x00880000`. Its size is 68
+128-KiB eraseblocks. The generated `boot.ubi` is limited to 8 MiB, leaving at
+least four physical eraseblocks of margin for bad blocks/UBI overhead.
+
+The boot objects are UBI static volumes rather than UBIFS files. U-Boot attaches
+only the small `boot` partition and runs:
+
+```text
+ubi part boot
+ubi read ${loadaddr} device-tree
+ubi read ${krnladdr} kernel
+bootz ${krnladdr} - ${loadaddr}
+```
+
+No explicit byte count is supplied to `ubi read`. U-Boot therefore uses the
+volume's recorded `used_bytes`, so only the actual DTB/kernel content is read
+even though their volumes may reserve more eraseblocks. This also gives the boot
+objects UBI bad-block handling without mounting UBIFS or scanning the 128 MiB
+rootfs UBI before the kernel starts.
+
+Build the complete flash artifact set with:
+
+```sh
+./build-nextgen-image.sh 6.18-flash sound
+# or: vibra
+```
+
+The image step emits `boot.ubi`, `rootfs.ubi`, the three padded NOR partition
+images, a complete 2 MiB `nor.img`, a SHA-256 manifest and
+`program-nextgen-flash.sh`. The programming helper is intentionally allowed
+only from the SD bring-up environment and writes U-Boot last.
