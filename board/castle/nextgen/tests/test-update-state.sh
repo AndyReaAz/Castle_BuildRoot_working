@@ -308,13 +308,13 @@ test_corrupt_hash_fallback()
 
 test_invalid_accepted_repairs_previous()
 {
-    c="$TMP/accepted-corrupt"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111
-    printf 'slotA 110\n' > "$c/root/state/sound/previous"
+    c="$TMP/accepted-corrupt"; setup_known_good "$c"; make_slot "$c/root" sound slotB 109
+    printf 'slotB 109\n' > "$c/root/state/sound/previous"
     chmod 0644 "$c/root/app/sound/slotA.sqfs"; printf corrupt >> "$c/root/app/sound/slotA.sqfs"; chmod 0444 "$c/root/app/sound/slotA.sqfs"
     run_launcher "$c" >/dev/null
-    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotB 111" "previous fallback runtime"
-    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotB 111" "accepted repaired to fallback"
-    assert_eq "$(cat "$c/root/state/sound/previous")" "slotB 111" "previous repaired with fallback"
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotB 109" "previous fallback runtime"
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotB 109" "accepted repaired to fallback"
+    assert_eq "$(cat "$c/root/state/sound/previous")" "slotB 109" "previous repaired with fallback"
     pass "invalid accepted image repairs state to mounted previous fallback"
 }
 
