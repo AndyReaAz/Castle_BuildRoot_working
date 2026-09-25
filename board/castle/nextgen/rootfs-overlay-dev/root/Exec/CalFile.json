@@ -1,0 +1,313 @@
+{
+  "FileFormat": "NextGenCalibration",
+  "SchemaVersion": 1,
+  "Product": "sound",
+  "FirmwareVersion": 100,
+  "NumEntries": 19,
+  "Cal": [
+    {
+      "TimeDate": [
+        26,
+        6,
+        1,
+        5,
+        16,
+        14
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -3.135895
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        6,
+        1,
+        5,
+        10,
+        53
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -3.193878
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        0,
+        7,
+        53
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -3.042114
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        1,
+        25,
+        39
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -3.450745
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        1,
+        21,
+        6
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.543564
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        1,
+        11,
+        43
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.557404
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        1,
+        10,
+        7
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.564926
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        1,
+        2,
+        29
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.528732
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        0,
+        57,
+        40
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.431946
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        0,
+        49,
+        13
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.149582
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        0,
+        48,
+        27
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.581924
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        0,
+        46,
+        7
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.59668
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        0,
+        39,
+        36
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -3.371582
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        6,
+        18,
+        11,
+        32,
+        17
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.250916
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        3,
+        20,
+        36,
+        8
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.667313
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        2,
+        22,
+        17,
+        58
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.259064
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        1,
+        1,
+        2,
+        9,
+        36
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.815186
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        5,
+        30,
+        10,
+        37,
+        4
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.49826
+      ]
+    },
+    {
+      "TimeDate": [
+        26,
+        5,
+        29,
+        0,
+        50,
+        45
+      ],
+      "CalibratorSerialNum": 0,
+      "CalibrationLevel": 940,
+      "InsertionLoss": 0,
+      "CorrectionFactor": [
+        -2.498413
+      ]
+    }
+  ]
+}
