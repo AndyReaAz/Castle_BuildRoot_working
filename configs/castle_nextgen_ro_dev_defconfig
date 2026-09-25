@@ -108,6 +108,7 @@ BR2_TARGET_ROOTFS_SQUASHFS4_LZO=y
 # Buildroot may still pull a minimal host Python/DTC/etc. transitively when a
 # selected package genuinely requires it.
 BR2_PACKAGE_HOST_DOSFSTOOLS=y
+BR2_PACKAGE_HOST_E2FSPROGS=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_HOST_KMOD=y
 BR2_PACKAGE_HOST_MTOOLS=y
