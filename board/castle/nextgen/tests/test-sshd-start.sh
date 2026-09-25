@@ -14,18 +14,39 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 RUNTIME="$TMP/run"
+KEY_DIR="$TMP/keys"
 PIDFILE="$TMP/sshd.pid"
 LOG="$TMP/actions.log"
 KEYGEN="$TMP/ssh-keygen"
 DAEMON="$TMP/sshd"
 START_STOP="$TMP/start-stop-daemon"
 
-mkdir -p "$RUNTIME"
+mkdir -p "$RUNTIME" "$KEY_DIR"
 : > "$LOG"
 
 cat > "$KEYGEN" <<'EOF'
 #!/bin/sh
+set -eu
+file=
+prev=
+for arg in "$@"; do
+    if [ "$prev" = -f ]; then
+        file="$arg"
+        break
+    fi
+    prev="$arg"
+done
+
+if [ "${1:-}" = -y ]; then
+    [ -n "$file" ] && [ -f "$file" ] && [ "$(cat "$file")" = valid-key ]
+    exit
+fi
+
 echo keygen >> "$TEST_LOG"
+[ -n "$file" ] || exit 2
+mkdir -p "$(dirname "$file")"
+printf '%s\n' valid-key > "$file"
+printf '%s\n' valid-pub > "$file.pub"
 sleep "${TEST_KEYGEN_DELAY:-0}"
 exit 0
 EOF
@@ -62,6 +83,8 @@ run_sshd()
     TEST_LOG="$LOG" \
     TEST_PIDFILE="$PIDFILE" \
     TEST_KEYGEN_DELAY="$delay" \
+    NEXTGEN_STORAGE_SCHEMA=ro-persist-v1 \
+    NEXTGEN_SSH_KEY_DIR="$KEY_DIR" \
     NEXTGEN_SSHD_DAEMON="$DAEMON" \
     NEXTGEN_SSH_KEYGEN="$KEYGEN" \
     NEXTGEN_START_STOP_DAEMON="$START_STOP" \
@@ -91,6 +114,7 @@ count_action()
 # key generator or daemon start.
 : > "$LOG"
 rm -f "$PIDFILE"
+rm -rf "$KEY_DIR"; mkdir -p "$KEY_DIR"
 rm -rf "$RUNTIME/nextgen-sshd-start.lock"
 rm -f "$RUNTIME/nextgen-sshd-stop.pending"
 
@@ -100,8 +124,8 @@ wait_for_lock
 run_sshd 0 start >"$TMP/start-2.out" 2>&1
 wait "$first_pid"
 
-[ "$(count_action keygen)" -eq 1 ] ||
-    fail "concurrent starts ran key generation more than once"
+[ "$(count_action keygen)" -eq 2 ] ||
+    fail "concurrent starts ran an unexpected number of key generations"
 [ "$(count_action daemon-start)" -eq 1 ] ||
     fail "concurrent starts launched sshd an unexpected number of times"
 grep -q '^SSH start already in progress$' "$TMP/start-2.out" ||
@@ -122,8 +146,8 @@ wait_for_lock
 run_sshd 0 stop >"$TMP/stop.out" 2>&1
 wait "$first_pid"
 
-[ "$(count_action keygen)" -eq 1 ] ||
-    fail "cancel test did not run exactly one key generation"
+[ "$(count_action keygen)" -eq 2 ] ||
+    fail "cancel test did not generate exactly one host-key pair"
 [ "$(count_action daemon-start)" -eq 0 ] ||
     fail "sshd started after engineering-mode cancellation"
 grep -q '^SSH start cancelled$' "$TMP/start-cancel.out" ||
@@ -140,10 +164,28 @@ rm -f "$RUNTIME/nextgen-sshd-stop.pending"
 
 run_sshd 0 start >"$TMP/start-stale.out" 2>&1
 
-[ "$(count_action keygen)" -eq 1 ] ||
-    fail "stale lock prevented key generation"
+[ "$(count_action keygen)" -eq 2 ] ||
+    fail "stale lock prevented host-key generation"
 [ "$(count_action daemon-start)" -eq 1 ] ||
     fail "stale lock prevented sshd start"
 echo "PASS: stale SSH start lock is recovered"
+
+# A non-empty but corrupt persisted private key must be replaced rather than
+# leaving engineering SSH permanently unusable after a power loss.
+: > "$LOG"
+rm -f "$PIDFILE"
+rm -rf "$RUNTIME/nextgen-sshd-start.lock"
+rm -f "$RUNTIME/nextgen-sshd-stop.pending"
+printf '%s\n' corrupt-key > "$KEY_DIR/ssh_host_ed25519_key"
+
+run_sshd 0 start >"$TMP/start-corrupt.out" 2>&1
+
+[ "$(count_action keygen)" -eq 1 ] ||
+    fail "corrupt key did not trigger exactly one regeneration"
+[ "$(cat "$KEY_DIR/ssh_host_ed25519_key")" = valid-key ] ||
+    fail "corrupt ed25519 key was not replaced"
+[ "$(count_action daemon-start)" -eq 1 ] ||
+    fail "sshd did not start after corrupt key recovery"
+echo "PASS: corrupt persistent SSH key is regenerated"
 
 echo "All engineering SSH start tests passed"
