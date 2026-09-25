@@ -26,6 +26,8 @@ fail()
 for mountpoint in app data state common/state; do
     [ -d "$ROOT/$mountpoint" ] || fail "mount point $mountpoint missing"
 done
+[ -d "$TARGET_DIR/sdcard" ] && [ ! -L "$TARGET_DIR/sdcard" ] ||
+    fail "immutable /sdcard mount point missing"
 
 [ -d "$ROOT/factory/$PRODUCT" ] || fail "factory Application missing"
 [ -x "$ROOT/factory/$PRODUCT/NextGen" ] || fail "factory NextGen missing"
