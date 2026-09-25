@@ -98,6 +98,18 @@ case "$PROFILE" in
         NEXTGEN_UBOOT_ENV_TEXT="$ROOT/board/castle/nextgen/uboot-bringup.env"
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
+    6.18-flash)
+        # Production no-SD payload. The normal Application rootfs is emitted as
+        # a self-contained UBI image with /boot/zImage and /boot/nextgen.dtb.
+        # NOR bootstrap/U-Boot packaging is intentionally a separate step so
+        # this profile cannot write or silently arm factory provisioning.
+        KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
+        KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
+        EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
+        KERNEL_PROFILE="deferred"
+        BUILDROOT_DEFCONFIG="castle_nextgen_dev_defconfig"
+        STORAGE_SCHEMA="flash-ubi-v1"
+        ;;
     6.18-nand)
         # Timing profile: keep bootstrap/U-Boot/kernel/DTB on SD and move only
         # the Linux root filesystem to the SPI-NAND rootfs UBI volume.
@@ -123,7 +135,7 @@ case "$PROFILE" in
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     *)
-        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-ro|6.18-bringup|6.18-nand|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
+        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-ro|6.18-bringup|6.18-flash|6.18-nand|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
         exit 2
         ;;
 esac
@@ -371,6 +383,22 @@ build_product()
             exit 1
         }
         printf 'Bring-up SD image:      %s\n' "$out/images/sdcard.img"
+    fi
+
+    if [ "$PROFILE" = "6.18-flash" ]; then
+        [ -f "$out/images/rootfs.ubi" ] || {
+            echo "error: production flash profile did not produce $out/images/rootfs.ubi" >&2
+            exit 1
+        }
+        [ -f "$out/images/production-ubi-manifest.sha256" ] || {
+            echo "error: production flash profile did not produce its UBI manifest" >&2
+            exit 1
+        }
+        (cd "$out/images" && sha256sum -c production-ubi-manifest.sha256 >/dev/null) || {
+            echo "error: production UBI manifest verification failed" >&2
+            exit 1
+        }
+        printf 'Production NAND UBI:    %s\n' "$out/images/rootfs.ubi"
     fi
 
     if [ "$PROFILE" = "6.18-nand" ]; then
