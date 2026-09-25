@@ -211,6 +211,25 @@ else
     choice="$(choose_known_good "" "" 2>/dev/null || true)"
 fi
 
+repair_factory_acceptance()
+{
+    version="$1"
+
+    # Factory is immutable platform content and is the final recovery trust
+    # anchor. If persistent state has been lost or names an invalid image,
+    # establish factory as known-good so subsequent routine updates can stage
+    # normally instead of leaving the meter permanently update-ineligible.
+    if [ -z "$(read_state_ref "$ACCEPTED" 2>/dev/null || true)" ]; then
+        printf 'factory %s\n' "$version" > "$STATE_ROOT/.accepted.tmp"
+        sync
+        mv -f "$STATE_ROOT/.accepted.tmp" "$ACCEPTED"
+        printf 'factory %s\n' "$version" > "$STATE_ROOT/.previous.tmp"
+        sync
+        mv -f "$STATE_ROOT/.previous.tmp" "$PREVIOUS"
+        sync
+    fi
+}
+
 [ -n "$choice" ] || {
     echo "NextGen launcher: no valid application image" >&2
     exit 111
@@ -238,6 +257,10 @@ if ! mount_ref "$ref" "$version"; then
         echo "NextGen launcher: fallback $ref is not mountable" >&2
         exit 111
     }
+fi
+
+if [ "$ref" = factory ]; then
+    repair_factory_acceptance "$version"
 fi
 
 echo "Launching NextGen $PRODUCT $ref version $version"
