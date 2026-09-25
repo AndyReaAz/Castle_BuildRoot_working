@@ -44,6 +44,7 @@ ACTIVE_MOUNT="$RUN_ROOT/nextgen-update-verify-$PRODUCT"
 PUBLIC_KEY="$ROOT/platform/share/update-public.pem"
 SIGNING_POLICY="$ROOT/platform/share/update-signing-policy"
 LOCK="$RUN_ROOT/nextgen-update-$PRODUCT.lock"
+MOUNTS_FILE="${NEXTGEN_MOUNTS_FILE:-/proc/mounts}"
 MEMBERS="$STATE_ROOT/.members.tmp"
 MANIFEST_TMP="$STATE_ROOT/.manifest.tmp"
 SIG_TMP="$STATE_ROOT/.manifest-signature.tmp"
@@ -54,7 +55,7 @@ LOOP=
 
 cleanup()
 {
-    if awk -v p="$ACTIVE_MOUNT" '$2 == p { found=1 } END { exit found ? 0 : 1 }' /proc/mounts 2>/dev/null; then
+    if awk -v p="$ACTIVE_MOUNT" '$2 == p { found=1 } END { exit found ? 0 : 1 }' "$MOUNTS_FILE" 2>/dev/null; then
         umount "$ACTIVE_MOUNT" 2>/dev/null || true
     fi
     [ -z "$LOOP" ] || losetup -d "$LOOP" 2>/dev/null || true
