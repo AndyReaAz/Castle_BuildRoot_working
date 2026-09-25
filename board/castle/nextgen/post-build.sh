@@ -82,6 +82,18 @@ case "$STORAGE_SCHEMA" in
             }
         done
         ;;
+    flash-ubi-v1)
+        [ -r "$KERNEL_BUILD_DIR/.config" ] || {
+            echo "error: flash profile has no external kernel .config: $KERNEL_BUILD_DIR/.config" >&2
+            exit 1
+        }
+        for sym in MTD_SPI_NAND MTD_UBI UBIFS_FS; do
+            grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
+                echo "error: flash profile requires CONFIG_${sym}=y in $KERNEL_BUILD_DIR/.config" >&2
+                exit 1
+            }
+        done
+        ;;
     *)
         echo "error: unknown NextGen storage schema: $STORAGE_SCHEMA" >&2
         exit 1
@@ -529,4 +541,21 @@ if [ "${NEXTGEN_DEV_SSH_PASSWORD_LOGIN:-1}" = "1" ] && [ -f "$TARGET_DIR/etc/ssh
         printf '\nPermitRootLogin yes\n' >> "$TARGET_DIR/etc/ssh/sshd_config"
     grep -q '^PasswordAuthentication[[:space:]]\+yes$' "$TARGET_DIR/etc/ssh/sshd_config" || \
         printf 'PasswordAuthentication yes\n' >> "$TARGET_DIR/etc/ssh/sshd_config"
+fi
+
+
+# A production flash payload is self-contained: U-Boot reads both the kernel
+# and DTB from the rootfs UBI volume before Linux mounts that same volume.
+# Stage those files into /boot before Buildroot creates rootfs.ubifs/rootfs.ubi.
+if [ "$STORAGE_SCHEMA" = "flash-ubi-v1" ]; then
+    install -m 0644 "$KERNEL_BUILD_DIR/arch/arm/boot/zImage" "$TARGET_DIR/boot/zImage"
+    if [ -f "$KERNEL_BUILD_DIR/arch/arm/boot/dts/microchip/nextgen.dtb" ]; then
+        install -m 0644 "$KERNEL_BUILD_DIR/arch/arm/boot/dts/microchip/nextgen.dtb" "$TARGET_DIR/boot/nextgen.dtb"
+    elif [ -f "$KERNEL_BUILD_DIR/arch/arm/boot/dts/nextgen.dtb" ]; then
+        install -m 0644 "$KERNEL_BUILD_DIR/arch/arm/boot/dts/nextgen.dtb" "$TARGET_DIR/boot/nextgen.dtb"
+    else
+        echo "error: flash profile cannot find nextgen.dtb" >&2
+        exit 1
+    fi
+    printf '%s\n' flash-ubi-v1 > "$TARGET_DIR/etc/nextgen-storage-schema"
 fi
