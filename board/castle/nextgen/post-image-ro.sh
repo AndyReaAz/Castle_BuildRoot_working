@@ -11,6 +11,11 @@ OUTPUT_DIR="$(CDPATH= cd -- "$BINARIES_DIR/.." && pwd)"
 PERSIST_SEED="$OUTPUT_DIR/nextgen-persist-seed"
 SLOT_SOURCE="$OUTPUT_DIR/nextgen-app-slot-source"
 
+# output trees are incremental. The dedicated RO profile must not leave stale
+# writable-root/NAND artifacts beside the authoritative SquashFS image.
+rm -f "$BINARIES_DIR/rootfs.ext2" "$BINARIES_DIR/rootfs.ext3" \
+    "$BINARIES_DIR/rootfs.ext4" "$BINARIES_DIR/rootfs.ubi"
+
 STAGED_PRODUCT="$(sed -n 's/^product=//p' "$SLOT_SOURCE/bundle.info" 2>/dev/null || true)"
 case "$STAGED_PRODUCT" in sound|vibra) ;; *)
     echo "error: invalid or missing staged Application product: '$STAGED_PRODUCT'" >&2
