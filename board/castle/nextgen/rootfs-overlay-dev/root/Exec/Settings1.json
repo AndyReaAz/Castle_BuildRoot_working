@@ -1,0 +1,419 @@
+{
+  "FileFormat": "NextGenSettings",
+  "SchemaVersion": 1,
+  "Product": "sound",
+  "Index": 5243,
+  "UsbSerial": "900000",
+  "UsbManufacturer": "Castle Group",
+  "UsbProduct": "Sonik Meter",
+  "FirmwareVersion": 110,
+  "Model": 63,
+  "SerialNumber": 900000,
+  "Class": 1,
+  "ManufactureDateTime": [
+    26,
+    6,
+    30,
+    12,
+    0,
+    4
+  ],
+  "CalibrationDueTime": [
+    27,
+    7,
+    1,
+    16,
+    19,
+    31
+  ],
+  "UserCalTime": [
+    26,
+    6,
+    1,
+    5,
+    16,
+    14
+  ],
+  "FactoryCalTime": [
+    26,
+    7,
+    19,
+    0,
+    21,
+    15
+  ],
+  "Manufacturer": 1,
+  "CurrentLang": 0,
+  "Brightness": 60,
+  "Background": 0,
+  "GainCal": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "Border": 0,
+  "EnableLevelColours": 1,
+  "AutoDimTime": 1,
+  "AutoTimeSync": 1,
+  "AutoTimeZone": 36,
+  "AutoTimeLastSynced": 1789996895,
+  "EnableScreenshot": 1,
+  "ShutdownThreshold": 20,
+  "FileIndex": 31,
+  "AutoFileName": 1,
+  "AutoPlayback": 0,
+  "AutoFileSync": 1,
+  "FileListFilter": 0,
+  "SaveCSV": 0,
+  "RecordOnStartup": 0,
+  "Recording": 0,
+  "RecordingRequest": 0,
+  "InitialStartup": 0,
+  "CalibrationReminder": 0,
+  "CalibrateOnStartup": 0,
+  "CalReminderBootCount": 0,
+  "TemplateLoaded": 0,
+  "EnableUSBDrive": 1,
+  "EnableUSBControl": 1,
+  "EnableUSBEthernet": 1,
+  "EnableWiFi": 1,
+  "WiFiSSID": "CastleWifi",
+  "EnableWiFiControl": 0,
+  "EnableDHCP": 1,
+  "IPAddr": 3338709184,
+  "SubNet": 16777215,
+  "Gateway": 268478656,
+  "DNS": 134744072,
+  "EBoxAPN": "global365",
+  "EBoxGPRSUsername": "",
+  "EBoxGPRSPassword": "",
+  "EBoxDNS": 134744072,
+  "URLs": 2,
+  "EnableGps": 0,
+  "EnableBluetooth": 0,
+  "InstrumentMode": 0,
+  "ModelType": 0,
+  "AutoAudioSync": 0,
+  "EnableACOutput": 0,
+  "SndCorrFactor": -36.135895,
+  "BbSplNoiseFloor": [
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12,
+    12
+  ],
+  "AutoCalibrate": 0,
+  "CalToValue": 940,
+  "CalInsertionLoss": 0,
+  "MicrophoneSerial": 0,
+  "MicrophoneMode": 0,
+  "PreAmpSerial": 0,
+  "CalibratorSerial": 0,
+  "LevelAmberThreshold": 80,
+  "LevelRedThreshold": 90,
+  "Template": {
+    "FileName": "",
+    "ModelCompatibility": 0,
+    "Certified": 0,
+    "InstrumentMode": 0,
+    "TimerStartEnable": [
+      0,
+      0
+    ],
+    "TimerStart0": [
+      0,
+      0,
+      7,
+      0,
+      0,
+      0
+    ],
+    "TimerStart1": [
+      0,
+      0,
+      7,
+      0,
+      0,
+      0
+    ],
+    "TimerStop0": [
+      0,
+      0,
+      7,
+      0,
+      0,
+      0
+    ],
+    "TimerStop1": [
+      0,
+      0,
+      7,
+      0,
+      0,
+      0
+    ],
+    "SyncPeriod": 0,
+    "RepeatCountEnable": 0,
+    "RepeatCount": 1,
+    "SmartRepeatCountEnable": 0,
+    "SmartRepeatCount": 1,
+    "SmartDuration": 3600,
+    "SplitDataFile": 0,
+    "UploadEvery": 0,
+    "EnableTimeHistory": 0,
+    "ShortTimeInterval": 10,
+    "LongTimeInterval": 5000,
+    "DurationTimerEnable": 0,
+    "DurationTimer": 0,
+    "Function": [
+      2,
+      0,
+      0
+    ],
+    "ChannelEnabled": [
+      1,
+      1,
+      0
+    ],
+    "Freq": [
+      0,
+      2,
+      1
+    ],
+    "Time": [
+      0,
+      0,
+      0
+    ],
+    "AmplifyNoiseEvent": 0,
+    "VoiceMemoEnable": -1,
+    "SplitAudioFile": 600,
+    "EventTriggerSource": 0,
+    "EventCountLevels": [
+      100,
+      80,
+      80,
+      135,
+      80
+    ],
+    "EventCountSource": 0,
+    "EventRecordingEnable": 1,
+    "EventRecordingMethod": 0,
+    "EventRecordingQuality": 2,
+    "EventRecordingEdge": 0,
+    "EventRecordingLevel": 450,
+    "EventRecordingFreq": 33,
+    "EventRecordingTime": 10,
+    "AudioClipTime": 10,
+    "NewClipEvery": 0,
+    "EnableACOutput": 0,
+    "EnablePinkNoiseOuput": 0,
+    "EnableWhiteNoiseOuput": 0,
+    "EnableTriggerInput": 0,
+    "TriggerInputDuration": 300,
+    "StreamingMethod": 0,
+    "StreamSPL": 0,
+    "HPDDatabase": 0,
+    "HPDDerating": 0,
+    "HSECorrection": 0,
+    "HPDStandardDeviation": 0,
+    "EnableLNs": 19,
+    "EnableShortLNs": 0,
+    "LUser": [
+      5,
+      15,
+      25,
+      35,
+      45,
+      55,
+      65,
+      75,
+      85,
+      95
+    ],
+    "LUserEnable": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "EnableLden": 3,
+    "LdenStart": [
+      420,
+      1140,
+      1380
+    ],
+    "LdenPenalty": [
+      0,
+      5,
+      10
+    ],
+    "Region": 1,
+    "ExposureTime": 480,
+    "ExposureChannel": 0,
+    "ExchangeRate": 3,
+    "Criterion": 85,
+    "ExposureThreshold": -1,
+    "ResultsEQ": [
+      1,
+      1,
+      1
+    ],
+    "ResultsMin": [
+      1,
+      1,
+      1
+    ],
+    "ResultsMax": [
+      1,
+      1,
+      1
+    ],
+    "ResultsPeak": [
+      1,
+      1,
+      1
+    ],
+    "ResultsLE": [
+      1,
+      1,
+      1
+    ],
+    "ResultsLTM3": [
+      1,
+      0,
+      1
+    ],
+    "ResultsLTM5": [
+      1,
+      0,
+      1
+    ],
+    "SpectrumResultsEQ": [
+      1,
+      1,
+      1
+    ],
+    "SpectrumResultsMin": [
+      1,
+      1,
+      1
+    ],
+    "SpectrumResultsMax": [
+      1,
+      1,
+      1
+    ],
+    "SpectrumResultsPeak": [
+      1,
+      1,
+      1
+    ],
+    "SpectrumResultsLE": [
+      1,
+      1,
+      1
+    ],
+    "SpectrumResultsNC": 1,
+    "SpectrumResultsNR": 1,
+    "SpectrumResultsPHON": 1,
+    "SummaryResultsEQ": [
+      1,
+      1,
+      1
+    ],
+    "SummaryResultsMin": [
+      1,
+      1,
+      1
+    ],
+    "SummaryResultsMax": [
+      1,
+      1,
+      1
+    ],
+    "SummaryResultsPeak": [
+      1,
+      1,
+      1
+    ],
+    "SummaryResultsLE": [
+      1,
+      1,
+      1
+    ],
+    "SummaryResultsLTM3": [
+      1,
+      1,
+      1
+    ],
+    "SummaryResultsLTM5": [
+      1,
+      1,
+      1
+    ],
+    "SummarySpectrumResultsEQ": [
+      1,
+      1,
+      1
+    ],
+    "SummarySpectrumResultsMin": [
+      1,
+      1,
+      1
+    ],
+    "SummarySpectrumResultsMax": [
+      1,
+      1,
+      1
+    ],
+    "SummarySpectrumResultsPeak": [
+      1,
+      1,
+      1
+    ],
+    "SummarySpectrumResultsLE": [
+      1,
+      1,
+      1
+    ],
+    "SummarySpectrumResultsNC": 1,
+    "SummarySpectrumResultsNR": 1,
+    "SummarySpectrumResultsPHON": 0,
+    "CompensationReflection": -1,
+    "CompensationDiffuseField": 0,
+    "CompensationWindscreen": -1,
+    "CompensationWindscreenIncidence": 0
+  }
+}
