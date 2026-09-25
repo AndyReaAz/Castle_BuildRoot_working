@@ -22,7 +22,7 @@ ACCEPTED="$STATE_ROOT/accepted"
 PREVIOUS="$STATE_ROOT/previous"
 ROLLBACK="$STATE_ROOT/rollback"
 CLEANUP="$STATE_ROOT/cleanup"
-RUN_REF="/run/nextgen-app-ref"
+RUN_REF="${NEXTGEN_RUN_REF:-/run/nextgen-app-ref}"
 
 . "$ROOT/platform/bin/nextgen-slot-common.sh"
 
