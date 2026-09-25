@@ -21,8 +21,9 @@ BOOTING="$STATE_ROOT/booting"
 ROLLBACK="$STATE_ROOT/rollback"
 ACCEPTED="$STATE_ROOT/accepted"
 PREVIOUS="$STATE_ROOT/previous"
-RUN_REF="/run/nextgen-app-ref"
-RUN_LOOP="/run/nextgen-app-loop"
+RUN_LOOP="${NEXTGEN_RUN_LOOP:-/run/nextgen-app-loop}"
+RUN_REF="${NEXTGEN_RUN_REF:-/run/nextgen-app-ref}"
+MOUNTS_FILE="${NEXTGEN_MOUNTS_FILE:-/proc/mounts}"
 
 . "$ROOT/platform/bin/nextgen-slot-common.sh"
 
@@ -55,7 +56,7 @@ mark_rollback()
 
 mounted_here()
 {
-    awk -v p="$ACTIVE_MOUNT" '$2 == p { found = 1 } END { exit found ? 0 : 1 }' /proc/mounts
+    awk -v p="$ACTIVE_MOUNT" '$2 == p { found = 1 } END { exit found ? 0 : 1 }' "$MOUNTS_FILE"
 }
 
 drop_active_mount()
