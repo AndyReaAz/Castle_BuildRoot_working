@@ -131,6 +131,24 @@ mode_to_mask()
     echo "$mask"
 }
 
+settings_is_pure_json()
+{
+    file="$1"
+
+    # Both the old JSON-only test/import form ('{ "Index"...') and the current
+    # self-describing form ('{ "FileFormat"...') have an ASCII JSON signature
+    # in the first four bytes. Requiring four bytes also makes confusion with a
+    # legacy little-endian generation counter vanishingly unlikely.
+    prefix="$(
+        od -An -N4 -tx1 "$file" 2>/dev/null |
+            tr -d '[:space:]'
+    )"
+    case "$prefix" in
+        7b202246|7b202249) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 settings_json_stream()
 {
     file="$1"
@@ -138,23 +156,26 @@ settings_json_stream()
     [ -f "$file" ] || return 1
     [ "$(wc -c < "$file" 2>/dev/null)" -ge 3 ] || return 1
 
-    # Current settings files are JSON from byte zero and are emitted as
-    # '{ "FileFormat"...'.  Older deployed files carry a four-byte LE
-    # generation counter before the same JSON. Keep that as a read-only
-    # migration path until all field units have rewritten both generations.
-    prefix="$(
-        od -An -N3 -tx1 "$file" 2>/dev/null |
-            tr -d '[:space:]'
-    )"
-    case "$prefix" in
-        7b2022)
-            cat "$file"
-            ;;
-        *)
-            [ "$(wc -c < "$file" 2>/dev/null)" -ge 7 ] || return 1
-            tail -c +5 "$file"
-            ;;
+    # Current settings files are JSON from byte zero. Older deployed files
+    # carry a four-byte little-endian generation counter before the same JSON.
+    if settings_is_pure_json "$file"; then
+        cat "$file"
+    else
+        [ "$(wc -c < "$file" 2>/dev/null)" -ge 7 ] || return 1
+        tail -c +5 "$file"
+    fi
+}
+
+settings_legacy_count()
+{
+    file="$1"
+
+    settings_is_pure_json "$file" && return 1
+    count="$(od -An -N4 -tu4 "$file" 2>/dev/null | tr -d '[:space:]')"
+    case "$count" in
+        ''|*[!0-9]*) return 1 ;;
     esac
+    printf '%s\n' "$count"
 }
 
 settings_uint()
@@ -214,7 +235,12 @@ settings_valid()
     [ -f "$file" ] || return 1
     [ "$(wc -c < "$file" 2>/dev/null)" -ge 3 ] || return 1
 
-    settings_count "$file" >/dev/null || return 1
+    count="$(settings_count "$file")" || return 1
+    legacy_count="$(settings_legacy_count "$file" 2>/dev/null || true)"
+    if [ -n "$legacy_count" ] && [ "$legacy_count" != "$count" ]; then
+        return 1
+    fi
+
     settings_uint "$file" SerialNumber >/dev/null || return 1
     manufacturer="$(settings_uint "$file" Manufacturer)" || return 1
     modeltype="$(settings_uint "$file" ModelType)" || return 1
