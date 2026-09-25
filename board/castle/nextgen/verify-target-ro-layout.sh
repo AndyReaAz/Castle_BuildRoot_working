@@ -83,6 +83,9 @@ fi
 [ -L "$TARGET_DIR/etc/timezone" ] &&
 [ "$(readlink "$TARGET_DIR/etc/timezone")" = ../run/nextgen/timezone ] ||
     fail "timezone is not runtime-backed"
+[ -L "$TARGET_DIR/etc/umtprd/umtprd.conf" ] &&
+[ "$(readlink "$TARGET_DIR/etc/umtprd/umtprd.conf")" = /run/umtprd/umtprd.conf ] ||
+    fail "uMTPrd configuration is not runtime-backed"
 
 grep -q '^/dev/root[[:space:]]\+/[[:space:]]\+squashfs[[:space:]]\+ro'     "$TARGET_DIR/etc/fstab" || fail "root is not declared read-only SquashFS"
 grep -q '^/dev/mmcblk0p3[[:space:]]\+/persist[[:space:]]\+ext4'     "$TARGET_DIR/etc/fstab" || fail "SD persist partition is missing"
