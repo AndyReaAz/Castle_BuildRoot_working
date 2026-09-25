@@ -138,11 +138,13 @@ SYSTEM_ABI="$("$UNSQUASHFS" -cat "$BINARIES_DIR/rootfs.squashfs"     etc/nextgen
     exit 1
 }
 
-"$DEBUGFS" -R "stat /app/$PRODUCT/slotA.sqfs" "$PERSIST_IMAGE"     >/dev/null 2>&1 || {
+"$DEBUGFS" -R "stat /app/$PRODUCT/slotA.sqfs" "$PERSIST_IMAGE" 2>/dev/null |
+    grep -q '^Inode:' || {
         echo "error: persist.ext4 has no slotA Application image" >&2
         exit 1
     }
-"$DEBUGFS" -R "stat /app/$PRODUCT/slotA.meta" "$PERSIST_IMAGE"     >/dev/null 2>&1 || {
+"$DEBUGFS" -R "stat /app/$PRODUCT/slotA.meta" "$PERSIST_IMAGE" 2>/dev/null |
+    grep -q '^Inode:' || {
         echo "error: persist.ext4 has no slotA metadata" >&2
         exit 1
     }
