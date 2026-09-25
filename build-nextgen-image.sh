@@ -389,6 +389,10 @@ build_product()
 
     if [ -n "${NEXTGEN_BUILDROOT_OUT:-}" ]; then
         out="$NEXTGEN_BUILDROOT_OUT"
+    elif [ "$PROFILE" = "6.18-bringup" ]; then
+        out="$ROOT/output-nextgen-bringup-$product"
+    elif [ "$PROFILE" = "6.18-flash" ]; then
+        out="$ROOT/output-nextgen-flash-$product"
     elif [ "$PRODUCT_EXPLICIT" -eq 1 ]; then
         out="$ROOT/output-nextgen-$product"
     else
@@ -397,6 +401,172 @@ build_product()
     fi
 
     make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
+
+    if [ "$PROFILE" = "6.18-bringup" ]; then
+        if [ -z "${NEXTGEN_PROVISION_BUNDLE_DIR:-}" ]; then
+            candidate_bundle="$ROOT/output-nextgen-flash-$product/images/production-provision"
+            if [ -d "$candidate_bundle" ]; then
+                NEXTGEN_PROVISION_BUNDLE_DIR="$candidate_bundle"
+                export NEXTGEN_PROVISION_BUNDLE_DIR
+            fi
+        fi
+        grep -q '^BR2_PACKAGE_MTD=y    if [ "$STORAGE_SCHEMA" = "ro-persist-v1" ]; then
+        for sym in \
+            BR2_TARGET_ROOTFS_SQUASHFS \
+            BR2_TARGET_ROOTFS_SQUASHFS4_LZO \
+            BR2_PACKAGE_E2FSPROGS \
+            BR2_PACKAGE_UTIL_LINUX \
+            BR2_PACKAGE_UTIL_LINUX_BINARIES \
+            BR2_PACKAGE_UTIL_LINUX_PARTX \
+            BR2_PACKAGE_HOST_E2FSPROGS \
+            BR2_PACKAGE_HOST_GENIMAGE \
+            BR2_PACKAGE_HOST_MTD
+        do
+            grep -q "^$sym=y$" "$out/.config" || {
+                echo "error: RO-root Buildroot config requires $sym=y" >&2
+                exit 1
+            }
+        done
+        for sym in BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW BR2_TARGET_ROOTFS_EXT2 BR2_TARGET_ROOTFS_UBI; do
+            if grep -q "^$sym=y$" "$out/.config"; then
+                echo "error: RO-root Buildroot config unexpectedly enables $sym" >&2
+                exit 1
+            fi
+        done
+    fi
+
+    printf 'NextGen image profile: %s\n' "$PROFILE"
+    printf 'NextGen product:       %s\n' "$product"
+    printf 'Kernel build:          %s\n' "$KERNEL_BUILD_DIR"
+    printf 'Kernel policy:         %s\n' "$KERNEL_PROFILE"
+    printf 'Storage schema:        %s\n' "$STORAGE_SCHEMA"
+    printf 'Storage backend:       %s\n' "$STORAGE_BACKEND"
+    printf 'Buildroot defconfig:   %s\n' "$BUILDROOT_DEFCONFIG"
+    printf 'Buildroot output:      %s\n' "$out"
+    if [ -n "$KERNEL_MODULES_ROOT" ]; then
+        printf 'Kernel modules:        %s\n' "$KERNEL_MODULES_ROOT"
+        printf 'Kernel release:        %s\n' "$EXPECTED_KERNEL_RELEASE"
+    fi
+    if [ "$KERNEL_PROFILE" = "deferred-diag" ]; then
+        printf 'Diagnostic U-Boot:     %s\n' "$NEXTGEN_UBOOT_IMAGE"
+        printf 'Diagnostic env:        %s\n' "$NEXTGEN_UBOOT_ENV_TEXT"
+    fi
+
+    NEXTGEN_PRODUCT="$product" \
+    NEXTGEN_KERNEL_BUILD_DIR="$KERNEL_BUILD_DIR" \
+    NEXTGEN_KERNEL_MODULES_ROOT="$KERNEL_MODULES_ROOT" \
+    NEXTGEN_EXPECTED_KERNEL_RELEASE="$EXPECTED_KERNEL_RELEASE" \
+    NEXTGEN_KERNEL_PROFILE="$KERNEL_PROFILE" \
+    NEXTGEN_STORAGE_SCHEMA="$STORAGE_SCHEMA" \
+    NEXTGEN_STORAGE_BACKEND="$STORAGE_BACKEND" \
+        make -C "$ROOT" O="$out" "$@"
+
+    if [ "$PROFILE" = "6.18-nand" ]; then
+        [ -f "$out/images/rootfs.ubi" ] || {
+            echo "error: NAND-root profile did not produce $out/images/rootfs.ubi" >&2
+            exit 1
+        }
+        printf 'NAND rootfs image:      %s\n' "$out/images/rootfs.ubi"
+    fi
+
+    if [ "$PROFILE" = "6.18-flash" ]; then
+        for artifact in \
+            rootfs.squashfs persist.ubifs boot.ubi rootfs.ubi \
+            nor-at91bootstrap.bin nor-uboot.bin nor-uboot-env.bin nor.img \
+            program-nextgen-flash.sh nextgen-flash-manifest.sha256
+        do
+            [ -f "$out/images/$artifact" ] || {
+                echo "error: flash profile did not produce $out/images/$artifact" >&2
+                exit 1
+            }
+        done
+        for artifact in at91bootstrap.bin u-boot.bin u-boot.trailer boot.ubi rootfs.ubi layout.env manifest.sha256; do
+            [ -f "$out/images/production-provision/$artifact" ] || {
+                echo "error: production provision bundle is incomplete: $artifact" >&2
+                exit 1
+            }
+        done
+        [ "$(wc -c < "$out/images/nor-at91bootstrap.bin")" -eq $((0x8000)) ] ||
+            { echo "error: AT91Bootstrap NOR partition image is not 32 KiB" >&2; exit 1; }
+        [ "$(wc -c < "$out/images/nor-uboot.bin")" -eq $((0x138000)) ] ||
+            { echo "error: U-Boot NOR partition image has wrong size" >&2; exit 1; }
+        [ "$(wc -c < "$out/images/nor-uboot-env.bin")" -eq $((0x20000)) ] ||
+            { echo "error: U-Boot environment partition image is not 128 KiB" >&2; exit 1; }
+        [ "$(wc -c < "$out/images/nor.img")" -eq $((0x200000)) ] ||
+            { echo "error: NOR programming image is not 2 MiB" >&2; exit 1; }
+        [ "$(wc -c < "$out/images/boot.ubi")" -le $((0x00800000)) ] ||
+            { echo "error: boot.ubi exceeds 8 MiB image budget" >&2; exit 1; }
+        [ "$(wc -c < "$out/images/rootfs.ubi")" -le $((0x08000000)) ] ||
+            { echo "error: rootfs.ubi exceeds 128 MiB partition" >&2; exit 1; }
+        (cd "$out/images" && sha256sum -c nextgen-flash-manifest.sha256 >/dev/null) ||
+            { echo "error: flash image manifest verification failed" >&2; exit 1; }
+        (cd "$out/images/production-provision" && sha256sum -c manifest.sha256 >/dev/null) ||
+            { echo "error: provision bundle manifest verification failed" >&2; exit 1; }
+
+        printf 'RO system image:        %s\n' "$out/images/rootfs.squashfs"
+        printf 'UBIFS persist seed:     %s\n' "$out/images/persist.ubifs"
+        printf 'NAND boot UBI image:   %s\n' "$out/images/boot.ubi"
+        printf 'NAND rootfs UBI image: %s\n' "$out/images/rootfs.ubi"
+        printf 'NOR programming image: %s\n' "$out/images/nor.img"
+        printf 'Provision bundle:      %s\n' "$out/images/production-provision"
+    fi
+
+    if [ "$PROFILE" = "6.18-bringup" ]; then
+        for artifact in boot.vfat rootfs.ext4 sdcard.img write-sd-card.sh; do
+            [ -f "$out/images/$artifact" ] || {
+                echo "error: bring-up profile did not produce $out/images/$artifact" >&2
+                exit 1
+            }
+        done
+        if [ -n "${NEXTGEN_PROVISION_BUNDLE_DIR:-}" ]; then
+            [ -f "$out/target/opt/nextgen/provision/manifest.sha256" ] || {
+                echo "error: bring-up rootfs did not stage the production bundle" >&2
+                exit 1
+            }
+        fi
+        printf 'Bring-up SD image:      %s\n' "$out/images/sdcard.img"
+    fi
+
+    if [ "$PROFILE" = "6.18-ro" ]; then
+        for artifact in boot.vfat uboot.env rootfs.squashfs persist.ext4 sdcard.img write-sd-card.sh nextgen-image-manifest.sha256; do
+            [ -f "$out/images/$artifact" ] || {
+                echo "error: RO-root profile did not produce $out/images/$artifact" >&2
+                exit 1
+            }
+        done
+        [ "$(wc -c < "$out/images/uboot.env")" -eq $((0x4000)) ] || {
+            echo "error: RO-root uboot.env is not the expected 16 KiB image" >&2
+            exit 1
+        }
+        (cd "$out/images" && sha256sum -c nextgen-image-manifest.sha256 >/dev/null) || {
+            echo "error: RO-root image manifest verification failed" >&2
+            exit 1
+        }
+        printf 'RO system image:        %s\n' "$out/images/rootfs.squashfs"
+        printf 'Persistent image:       %s\n' "$out/images/persist.ext4"
+        printf 'Full SD image:          %s\n' "$out/images/sdcard.img"
+        printf 'U-Boot environment:     %s\n' "$out/images/uboot.env"
+    fi
+
+    printf 'Built product:          %s\n' "$product"
+    printf 'Built kernel profile:   %s\n' "$PROFILE"
+    printf 'Profile marker:         /etc/nextgen-kernel-profile\n'
+}
+
+case "$PRODUCT" in
+    both)
+        build_product sound "$@"
+        build_product vibra "$@"
+        ;;
+    sound|vibra)
+        build_product "$PRODUCT" "$@"
+        ;;
+esac
+ "$out/.config" ||
+            { echo "error: bring-up image requires mtd-utils" >&2; exit 1; }
+        grep -q 'post-build-bringup.sh' "$out/.config" ||
+            { echo "error: bring-up post-build hook is not configured" >&2; exit 1; }
+    fi
 
     if [ "$PROFILE" = "6.18-ro" ]; then
         for sym in \
