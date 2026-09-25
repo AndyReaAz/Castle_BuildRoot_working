@@ -192,7 +192,7 @@ sync
 
 mkdir -p "$ACTIVE_MOUNT"
 LOOP="$(losetup -f)" || die "no loop device available for image validation"
-losetup "$LOOP" "$IMAGE_TMP" || die "cannot attach Application image"
+losetup -r "$LOOP" "$IMAGE_TMP" || die "cannot attach Application image"
 mount -t squashfs -o ro "$LOOP" "$ACTIVE_MOUNT" || die "cannot mount Application image"
 nextgen_mounted_app_valid "$version" || die "Application image contents do not match metadata"
 umount "$ACTIVE_MOUNT" || die "cannot unmount verified Application image"
