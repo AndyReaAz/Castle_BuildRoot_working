@@ -8,6 +8,12 @@ STOPFILE="/run/nextgen.stop"
 
 start()
 {
+    if [ "$(cat /etc/nextgen-storage-schema 2>/dev/null || true)" = "ro-persist-v1" ] &&
+       [ ! -e /run/nextgen-persist-ready ]; then
+        echo "NextGen persistent storage is unavailable; Application not started" >&2
+        return 1
+    fi
+
     # The normal network init script only brought up loopback. Do that
     # directly here so local sockets are available before the application
     # without running ifupdown during the UI-critical startup window.
