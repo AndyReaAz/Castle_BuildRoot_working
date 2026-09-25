@@ -143,8 +143,7 @@ image_bytes="$(manifest_value bytes)" || die "manifest byte count is missing"
 image_sha="$(manifest_value sha256)" || die "manifest SHA-256 is missing"
 
 case "$image_name" in
-    ''|*/*|*\\*|*[!A-Za-z0-9_.-]*|*.sqfs) ;;
-    *) die "invalid image member name" ;;
+    ''|*/*|*\\*|*[!A-Za-z0-9_.-]*) die "invalid image member name" ;;
 esac
 case "$image_name" in *.sqfs) ;; *) die "image member is not SquashFS" ;; esac
 case "$image_bytes" in ''|*[!0-9]*) die "invalid image byte count" ;; esac
