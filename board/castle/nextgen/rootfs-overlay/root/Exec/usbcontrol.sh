@@ -162,7 +162,7 @@ settings_uint()
     value="$(
         tail -c +5 "$file" 2>/dev/null |
             tr ',' '\n' |
-            sed -n "s/^[[:space:]]*\"$key\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p" |
+            sed -n "s/^[[:space:]]*[{]*[[:space:]]*\"$key\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p" |
             sed -n '1p'
     )"
 
