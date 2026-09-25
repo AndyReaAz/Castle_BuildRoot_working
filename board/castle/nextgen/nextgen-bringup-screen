@@ -1,0 +1,62 @@
+#!/bin/sh
+set -eu
+
+TTY="${NEXTGEN_BRINGUP_TTY:-/dev/tty1}"
+
+wait_for_lcd()
+{
+    count=0
+    while [ "$count" -lt 300 ]; do
+        if [ -c "$TTY" ] && [ -e /sys/class/graphics/fb0 ]; then
+            return 0
+        fi
+        sleep 0.1
+        count=$((count + 1))
+    done
+    return 1
+}
+
+paint()
+{
+    sgr="$1"
+    shift
+
+    wait_for_lcd || return 1
+
+    {
+        printf '\033[?25l'
+        printf '\033[%sm' "$sgr"
+        printf '\033[2J\033[H'
+        printf '\n\n'
+        while [ "$#" -gt 0 ]; do
+            printf '   %s\n' "$1"
+            shift
+        done
+    } > "$TTY"
+}
+
+case "${1:-}" in
+    progress)
+        shift
+        paint '37;40' "$@"
+        ;;
+    success)
+        shift
+        paint '30;42' "$@"
+        ;;
+    fail)
+        shift
+        paint '37;41' "$@"
+        ;;
+    hold)
+        shift
+        paint '30;43' "$@"
+        ;;
+    clear)
+        paint '37;40' ''
+        ;;
+    *)
+        echo "Usage: $0 {progress|success|fail|hold|clear} [message ...]" >&2
+        exit 2
+        ;;
+esac
