@@ -1,0 +1,234 @@
+#!/bin/sh
+set -eu
+
+die()
+{
+    echo "NextGen update: $*" >&2
+    exit 1
+}
+
+[ "$#" -eq 2 ] || {
+    echo "Usage: $0 <sound|vibra> <package.zip>" >&2
+    exit 2
+}
+
+PRODUCT="$1"
+PACKAGE="$2"
+case "$PRODUCT" in sound|vibra) ;; *) die "invalid product $PRODUCT" ;; esac
+[ -f "$PACKAGE" ] && [ ! -L "$PACKAGE" ] || die "package is not a regular file"
+[ "$(wc -c < "$PACKAGE")" -le $((70 * 1024 * 1024)) ] ||
+    die "package exceeds 70 MiB limit"
+
+SDCARD_ROOT="${NEXTGEN_SDCARD_ROOT:-/sdcard}"
+PACKAGE_DIR="$(dirname "$PACKAGE")"
+PACKAGE_NAME="${PACKAGE##*/}"
+case "$PACKAGE_DIR" in
+    "$SDCARD_ROOT/public"|"$SDCARD_ROOT/temp/TempFirmware") ;;
+    *) die "package is outside an approved staging directory" ;;
+esac
+case "$PACKAGE_NAME" in
+    ''|*[!A-Za-z0-9_.-]*|*.part) die "invalid package name" ;;
+    *.zip) ;;
+    *) die "package is not a ZIP" ;;
+esac
+
+ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
+RUN_ROOT="${NEXTGEN_RUN_ROOT:-/run}"
+PLATFORM_ABI="$(cat /etc/nextgen-platform-abi 2>/dev/null || true)"
+case "$PLATFORM_ABI" in ''|*[!0-9]*) die "invalid platform ABI" ;; esac
+
+APP_ROOT="$ROOT/app/$PRODUCT"
+FACTORY_ROOT="$ROOT/factory/$PRODUCT"
+STATE_ROOT="$ROOT/state/$PRODUCT"
+ACTIVE_MOUNT="$RUN_ROOT/nextgen-update-verify-$PRODUCT"
+PUBLIC_KEY="$ROOT/platform/share/update-public.pem"
+SIGNING_POLICY="$ROOT/platform/share/update-signing-policy"
+LOCK="$RUN_ROOT/nextgen-update-$PRODUCT.lock"
+MEMBERS="$STATE_ROOT/.members.tmp"
+MANIFEST_TMP="$STATE_ROOT/.manifest.tmp"
+SIG_TMP="$STATE_ROOT/.manifest-signature.tmp"
+IMAGE_TMP=
+LOOP=
+
+. "$ROOT/platform/bin/nextgen-slot-common.sh"
+
+cleanup()
+{
+    if awk -v p="$ACTIVE_MOUNT" '$2 == p { found=1 } END { exit found ? 0 : 1 }' /proc/mounts 2>/dev/null; then
+        umount "$ACTIVE_MOUNT" 2>/dev/null || true
+    fi
+    [ -z "$LOOP" ] || losetup -d "$LOOP" 2>/dev/null || true
+    [ -z "$IMAGE_TMP" ] || rm -f "$IMAGE_TMP"
+    rm -f "$MEMBERS" "$MANIFEST_TMP" "$SIG_TMP" "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
+    rmdir "$ACTIVE_MOUNT" 2>/dev/null || true
+    rmdir "$LOCK" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$APP_ROOT" "$STATE_ROOT" "$RUN_ROOT"
+mkdir "$LOCK" 2>/dev/null || die "another application install is already in progress"
+
+for state in pending booting rollback cleanup; do
+    [ ! -e "$STATE_ROOT/$state" ] ||
+        die "previous update transaction still needs recovery or cleanup"
+done
+
+unzip -Z1 "$PACKAGE" > "$MEMBERS" || die "cannot read package directory"
+member_count="$(wc -l < "$MEMBERS")"
+[ "$member_count" -ge 2 ] && [ "$member_count" -le 3 ] ||
+    die "unexpected archive member count"
+
+manifest_name="$(sed -n '/^manifest_V[0-9][0-9]*_[0-9A-Fa-f][0-9A-Fa-f]*\.txt$/p' "$MEMBERS")"
+[ -n "$manifest_name" ] && [ "$(printf '%s\n' "$manifest_name" | wc -l)" -eq 1 ] ||
+    die "package must contain exactly one manifest"
+
+case "$manifest_name" in */*|*\\*) die "unsafe manifest name" ;; esac
+unzip -p "$PACKAGE" "$manifest_name" > "$MANIFEST_TMP" || die "cannot extract manifest"
+[ "$(wc -c < "$MANIFEST_TMP")" -le 4096 ] || die "manifest is too large"
+
+stem="${manifest_name%.txt}"
+manifest_md5="${stem##*_}"
+[ "${#manifest_md5}" -eq 32 ] || die "invalid manifest digest name"
+case "$manifest_md5" in *[!0-9A-Fa-f]*) die "invalid manifest digest name" ;; esac
+manifest_md5="$(printf '%s' "$manifest_md5" | tr 'A-F' 'a-f')"
+[ "$(md5sum "$MANIFEST_TMP" | awk '{print $1}')" = "$manifest_md5" ] ||
+    die "manifest digest mismatch"
+
+signature_count="$(grep -Fxc manifest.sig "$MEMBERS" || true)"
+policy="$(cat "$SIGNING_POLICY" 2>/dev/null || true)"
+case "$policy" in
+    ed25519-required)
+        [ -r "$PUBLIC_KEY" ] || die "signed-update policy has no public key"
+        [ "$signature_count" -eq 1 ] || die "signed bundle requires manifest.sig"
+        unzip -p "$PACKAGE" manifest.sig > "$SIG_TMP" || die "cannot extract signature"
+        [ "$(wc -c < "$SIG_TMP")" -eq 64 ] || die "invalid Ed25519 signature length"
+        openssl pkeyutl -verify -pubin -inkey "$PUBLIC_KEY" -rawin             -in "$MANIFEST_TMP" -sigfile "$SIG_TMP" >/dev/null 2>&1 ||
+            die "manifest signature verification failed"
+        ;;
+    unsigned-development)
+        [ "$signature_count" -eq 0 ] || die "development image cannot verify signed bundle"
+        ;;
+    *)
+        die "missing or invalid signing policy"
+        ;;
+esac
+
+magic=
+format=
+bundle_product=
+version=
+bundle_abi=
+extra=
+IFS=' ' read -r magic format bundle_product version bundle_abi extra < "$MANIFEST_TMP" ||
+    die "cannot read manifest header"
+[ "$magic" = NEXTGEN_APP_IMAGE ] || die "unsupported manifest"
+[ "$format" = 4 ] || die "unsupported bundle format"
+[ "$bundle_product" = "$PRODUCT" ] || die "bundle is for $bundle_product"
+case "$version" in ''|*[!0-9]*) die "invalid bundle version" ;; esac
+[ "$version" -gt 0 ] && [ "$version" -le 2147483647 ] || die "invalid bundle version"
+[ "$bundle_abi" = "$PLATFORM_ABI" ] || die "bundle requires platform ABI $bundle_abi"
+[ -z "$extra" ] || die "invalid manifest header"
+[ "$(wc -l < "$MANIFEST_TMP")" -eq 4 ] || die "unexpected manifest fields"
+
+manifest_value()
+{
+    key="$1"
+    count="$(grep -c "^$key=" "$MANIFEST_TMP" || true)"
+    [ "$count" -eq 1 ] || return 1
+    sed -n "s/^$key=//p" "$MANIFEST_TMP"
+}
+
+image_name="$(manifest_value image)" || die "manifest image is missing"
+image_bytes="$(manifest_value bytes)" || die "manifest byte count is missing"
+image_sha="$(manifest_value sha256)" || die "manifest SHA-256 is missing"
+
+case "$image_name" in
+    ''|*/*|*\\*|*[!A-Za-z0-9_.-]*|*.sqfs) ;;
+    *) die "invalid image member name" ;;
+esac
+case "$image_name" in *.sqfs) ;; *) die "image member is not SquashFS" ;; esac
+case "$image_bytes" in ''|*[!0-9]*) die "invalid image byte count" ;; esac
+[ "$image_bytes" -gt 0 ] && [ "$image_bytes" -le $((64 * 1024 * 1024)) ] ||
+    die "image size is out of range"
+[ "${#image_sha}" -eq 64 ] || die "invalid image SHA-256"
+case "$image_sha" in *[!0-9A-Fa-f]*) die "invalid image SHA-256" ;; esac
+image_sha="$(printf '%s' "$image_sha" | tr 'A-F' 'a-f')"
+
+[ "$(grep -Fxc "$image_name" "$MEMBERS")" -eq 1 ] || die "image member missing or duplicated"
+expected_members=$((2 + signature_count))
+[ "$member_count" -eq "$expected_members" ] || die "archive contains undeclared files"
+
+accepted_ref=
+accepted_version=
+accepted_extra=
+[ -r "$STATE_ROOT/accepted" ] || die "no accepted Application state"
+IFS=' ' read -r accepted_ref accepted_version accepted_extra < "$STATE_ROOT/accepted" ||
+    die "cannot read accepted state"
+nextgen_valid_ref "$accepted_ref" || die "accepted state has invalid slot"
+case "$accepted_version" in ''|*[!0-9]*) die "accepted state has invalid version" ;; esac
+[ -z "$accepted_extra" ] || die "accepted state has extra fields"
+[ "$(nextgen_slot_version "$accepted_ref" 2>/dev/null || true)" = "$accepted_version" ] ||
+    die "accepted slot metadata mismatch"
+nextgen_slot_valid "$accepted_ref" || die "accepted Application is not valid"
+[ "$version" -gt "$accepted_version" ] ||
+    die "bundle version $version is not newer than accepted version $accepted_version"
+
+case "$accepted_ref" in
+    slotA) NEW=slotB ;;
+    slotB) NEW=slotA ;;
+    factory) NEW=slotA ;;
+esac
+OLD="$accepted_ref"
+
+IMAGE_TMP="$APP_ROOT/.$NEW.sqfs.tmp"
+rm -f "$IMAGE_TMP"
+unzip -p "$PACKAGE" "$image_name" > "$IMAGE_TMP" || die "cannot extract Application image"
+[ "$(wc -c < "$IMAGE_TMP")" -eq "$image_bytes" ] || die "Application image size mismatch"
+[ "$(sha256sum "$IMAGE_TMP" | awk '{print $1}')" = "$image_sha" ] ||
+    die "Application image SHA-256 mismatch"
+chmod 0444 "$IMAGE_TMP"
+sync
+
+mkdir -p "$ACTIVE_MOUNT"
+LOOP="$(losetup -f)" || die "no loop device available for image validation"
+losetup "$LOOP" "$IMAGE_TMP" || die "cannot attach Application image"
+mount -t squashfs -o ro "$LOOP" "$ACTIVE_MOUNT" || die "cannot mount Application image"
+nextgen_mounted_app_valid "$version" || die "Application image contents do not match metadata"
+umount "$ACTIVE_MOUNT" || die "cannot unmount verified Application image"
+losetup -d "$LOOP" || die "cannot detach verified Application image"
+LOOP=
+
+mv -f "$IMAGE_TMP" "$APP_ROOT/$NEW.sqfs"
+IMAGE_TMP=
+sync
+
+cat > "$APP_ROOT/.$NEW.meta.tmp" <<EOF
+format=4
+product=$PRODUCT
+version=$version
+platform_abi=$PLATFORM_ABI
+bytes=$image_bytes
+sha256=$image_sha
+EOF
+sync
+mv -f "$APP_ROOT/.$NEW.meta.tmp" "$APP_ROOT/$NEW.meta"
+if [ "$signature_count" -eq 1 ]; then
+    cp "$SIG_TMP" "$APP_ROOT/.$NEW.sig.tmp"
+    sync
+    mv -f "$APP_ROOT/.$NEW.sig.tmp" "$APP_ROOT/$NEW.sig"
+else
+    rm -f "$APP_ROOT/$NEW.sig"
+fi
+sync
+
+rm -f "$STATE_ROOT/booting" "$STATE_ROOT/rollback"
+printf '%s %s\n' "$version" "$PACKAGE" > "$STATE_ROOT/.cleanup.tmp"
+sync
+mv -f "$STATE_ROOT/.cleanup.tmp" "$STATE_ROOT/cleanup"
+
+printf '%s %s %s\n' "$NEW" "$OLD" "$version" > "$STATE_ROOT/.pending.tmp"
+sync
+mv -f "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/pending"
+sync
+
+echo "NextGen update: staged $PRODUCT version $version in $NEW image; reboot required"
