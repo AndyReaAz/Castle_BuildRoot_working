@@ -47,6 +47,10 @@ fi
 rm -rf "$ROOT/factory"
 mkdir -p "$FACTORY"
 cp -a "$OLD_APP/factory/." "$FACTORY/"
+if [ -d "$APP_DIR/Application/Files/SystemTemplates" ]; then
+    mkdir -p "$FACTORY/Templates"
+    cp -a "$APP_DIR/Application/Files/SystemTemplates/." "$FACTORY/Templates/"
+fi
 
 for appdir in "$SLOT_SOURCE" "$FACTORY"; do
     cat > "$appdir/bundle.info" <<EOF
