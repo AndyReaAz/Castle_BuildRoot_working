@@ -229,6 +229,9 @@ build_product()
             BR2_TARGET_ROOTFS_SQUASHFS \
             BR2_TARGET_ROOTFS_SQUASHFS4_LZO \
             BR2_PACKAGE_E2FSPROGS \
+            BR2_PACKAGE_UTIL_LINUX \
+            BR2_PACKAGE_UTIL_LINUX_BINARIES \
+            BR2_PACKAGE_UTIL_LINUX_PARTX \
             BR2_PACKAGE_HOST_E2FSPROGS \
             BR2_PACKAGE_HOST_GENIMAGE
         do
