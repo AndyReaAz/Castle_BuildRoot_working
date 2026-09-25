@@ -156,23 +156,7 @@
       0,
       0
     ],
-    "TimerStart1": [
-      0,
-      0,
-      7,
-      0,
-      0,
-      0
-    ],
     "TimerStop0": [
-      0,
-      0,
-      7,
-      0,
-      0,
-      0
-    ],
-    "TimerStop1": [
       0,
       0,
       7,
@@ -239,7 +223,6 @@
     "EnableWhiteNoiseOuput": 0,
     "EnableTriggerInput": 0,
     "TriggerInputDuration": 300,
-    "StreamingMethod": 0,
     "StreamSPL": 0,
     "HPDDatabase": 0,
     "HPDDerating": 0,
