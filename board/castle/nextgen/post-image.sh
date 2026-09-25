@@ -219,8 +219,10 @@ EOF
     rm -f "$UBI_CFG"
 
     BOOT_UBI_BYTES="$(wc -c < "$BINARIES_DIR/boot.ubi" | tr -d '[:space:]')"
-    [ "$BOOT_UBI_BYTES" -le $((0x00880000)) ] || {
-        echo "error: boot.ubi exceeds 8.5 MiB NAND boot partition: $BOOT_UBI_BYTES" >&2
+    # Keep four 128 KiB PEBs physically free in the 68-PEB boot partition.
+    # This is deliberately stricter than merely fitting inside 0x00880000.
+    [ "$BOOT_UBI_BYTES" -le $((0x00800000)) ] || {
+        echo "error: boot.ubi exceeds 8 MiB image budget (512 KiB UBI reserve): $BOOT_UBI_BYTES" >&2
         exit 1
     }
 
