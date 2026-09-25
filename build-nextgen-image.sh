@@ -206,7 +206,10 @@ if [ "$PROFILE" = "6.18-flash" ]; then
     for source in \
         "$WORKSPACE/at91bootstrap/build-fast.sh" \
         "$WORKSPACE/at91bootstrap/configs/nextgen_nor_uboot_defconfig" \
-        "$WORKSPACE/at91bootstrap/driver/spi_flash.c"
+        "$WORKSPACE/at91bootstrap/driver/spi_flash.c" \
+        "$WORKSPACE/at91bootstrap/driver/nextgen_fuse.c" \
+        "$WORKSPACE/at91bootstrap/include/nextgen_fuse.h" \
+        "$WORKSPACE/at91bootstrap/main.c"
     do
         [ ! "$source" -nt "$NEXTGEN_AT91BOOTSTRAP" ] || {
             echo "error: NOR AT91Bootstrap artifact is stale: $NEXTGEN_AT91BOOTSTRAP" >&2
@@ -242,7 +245,7 @@ fi
 if [ "$PROFILE" = "6.18-bringup" ]; then
     grep -a -q 'FUSE: incompatible existing boot fuse; not modified' "$NEXTGEN_AT91BOOTSTRAP" || {
         echo "error: bring-up AT91Bootstrap does not contain the NextGen fuse guard" >&2
-        echo "       rebuild at91bootstrap from chatgpt/ro-root-image-slots first" >&2
+        echo "       rebuild at91bootstrap from chatgpt/fuse-burn first" >&2
         exit 1
     }
 
