@@ -9,6 +9,22 @@ KERNEL_BUILD_DIR="${NEXTGEN_KERNEL_BUILD_DIR:-$WORKSPACE_DIR/linux-working/build
 : "${BINARIES_DIR:?Buildroot did not provide BINARIES_DIR}"
 : "${HOST_DIR:?Buildroot did not provide HOST_DIR}"
 
+# The production flash profile emits only the NAND payload. Buildroot has
+# already created rootfs.ubi from the staged target tree at this point.
+# Do not manufacture an SD image or depend on SD boot artifacts here.
+if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
+    [ -f "$BINARIES_DIR/rootfs.ubi" ] || {
+        echo "error: flash profile did not produce rootfs.ubi" >&2
+        exit 1
+    }
+    (
+        cd "$BINARIES_DIR"
+        sha256sum rootfs.ubi > production-ubi-manifest.sha256
+    )
+    echo "NextGen production NAND UBI: $BINARIES_DIR/rootfs.ubi"
+    exit 0
+fi
+
 stage_required()
 {
     destination="$1"
