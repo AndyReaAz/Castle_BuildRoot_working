@@ -16,6 +16,14 @@ IMAGES_DIR="${2:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
 case "$DEVICE" in /dev/*) ;; *) echo "error: expected whole /dev device" >&2; exit 1 ;; esac
 [ -b "$DEVICE" ] || { echo "error: not a block device: $DEVICE" >&2; exit 1; }
 
+DEVICE_TYPE="$(lsblk -ndo TYPE "$DEVICE" 2>/dev/null || true)"
+PARENT_NAME="$(lsblk -ndo PKNAME "$DEVICE" 2>/dev/null || true)"
+[ "$DEVICE_TYPE" = disk ] && [ -z "$PARENT_NAME" ] || {
+    echo "error: expected a whole disk device, not a partition/mapping: $DEVICE" >&2
+    lsblk "$DEVICE" >&2 || true
+    exit 1
+}
+
 BOOT_IMAGE="$IMAGES_DIR/boot.vfat"
 ROOT_IMAGE="$IMAGES_DIR/rootfs.squashfs"
 PERSIST_IMAGE="$IMAGES_DIR/persist.ext4"
