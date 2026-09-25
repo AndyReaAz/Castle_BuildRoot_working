@@ -39,6 +39,7 @@ for script in \
     "$SCRIPT_DIR/rootfs-overlay/root/Exec/fwenv.sh" \
     "$SCRIPT_DIR/rootfs-overlay/root/Exec/usb-gadget-common.sh" \
     "$SCRIPT_DIR/rootfs-overlay/root/Exec/usbcontrol.sh" \
+    "$SCRIPT_DIR/rootfs-overlay/etc/init.d/sshd" \
     "$SCRIPT_DIR/nextgen-update-install" \
     "$SCRIPT_DIR/nextgen-update-accept" \
     "$SCRIPT_DIR/verify-target-layout.sh"
@@ -202,13 +203,14 @@ fi
 
 # sshd is engineering infrastructure, not a product startup dependency.
 # Starting it from rcS also performs first-boot host-key generation on the
-# Cortex-A5. Keep the script installed; the application launches it in the
-# background after the UI/measurement path is running when engineering mode
-# is enabled.
-if [ -f "$TARGET_DIR/etc/init.d/S50sshd" ]; then
-    mv "$TARGET_DIR/etc/init.d/S50sshd" \
-        "$TARGET_DIR/etc/init.d/sshd"
-fi
+# Cortex-A5.  The application launches it in the background after the
+# UI/measurement path is running when engineering mode is enabled.  Install
+# the NextGen wrapper rather than the package script so concurrent health-check
+# retries cannot race first-use key generation, and engineering disable can
+# cancel a start that is still generating keys.
+rm -f "$TARGET_DIR/etc/init.d/S50sshd"
+install -m 0755 "$SCRIPT_DIR/rootfs-overlay/etc/init.d/sshd" \
+    "$TARGET_DIR/etc/init.d/sshd"
 
 # dnsmasq is only used by the engineering USB NCM path. usbcontrol.sh starts
 # an isolated instance with its own PID/lease files when NCM is selected.
