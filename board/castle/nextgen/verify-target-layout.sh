@@ -89,6 +89,10 @@ for field in SerialNumber Manufacturer ModelType; do
         ''|*[!0-9]*) fail "usbcontrol.sh returned invalid $field identity" ;;
     esac
 done
+for field in ManufacturerName ProductName; do
+    value="$(printf '%s\n' "$USB_IDENTITY" | sed -n "s/^$field=//p")"
+    [ -n "$value" ] || fail "usbcontrol.sh returned empty $field"
+done
 
 for font in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
     [ -r "$COMMON_SHARE/$font" ] || fail "platform font $font is missing"
