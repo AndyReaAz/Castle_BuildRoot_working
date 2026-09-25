@@ -90,8 +90,8 @@ if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
         exit 1
     }
     TRAILER_LEN=$(( $5 | ($6 << 8) | ($7 << 16) | ($8 << 24) ))
-    TRAILER_INV=$(( $9 | ($10 << 8) | ($11 << 16) | ($12 << 24) ))
-    TRAILER_VER=$(( $13 | ($14 << 8) | ($15 << 16) | ($16 << 24) ))
+    TRAILER_INV=$(( $9 | (${10} << 8) | (${11} << 16) | (${12} << 24) ))
+    TRAILER_VER=$(( ${13} | (${14} << 8) | (${15} << 16) | (${16} << 24) ))
     [ "$TRAILER_LEN" -eq "$UBOOT_BYTES" ] || {
         echo "error: U-Boot trailer length $TRAILER_LEN does not match u-boot.bin $UBOOT_BYTES" >&2
         exit 1
