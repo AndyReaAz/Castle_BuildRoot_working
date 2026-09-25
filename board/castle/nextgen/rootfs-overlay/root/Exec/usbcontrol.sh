@@ -225,12 +225,31 @@ write_gadget_identity()
         2)
             echo "SKC"
             ;;
+        3)
+            echo "Pulsar Instruments"
+            ;;
+        4)
+            echo "Cirrus Research"
+            ;;
         *)
             echo "Castle Group"
             ;;
     esac > "$GADGET/strings/0x409/manufacturer"
 
-    if [ "$MANUFACTURER" -eq 2 ]; then
+    if [ "$PRODUCT" = vibra ]; then
+        # Match the vibration Application's current public model naming.
+        case "$MANUFACTURER" in
+            1)
+                echo "VIBA(8)"
+                ;;
+            3)
+                echo "vB2"
+                ;;
+            *)
+                echo "Triax"
+                ;;
+        esac
+    elif [ "$MANUFACTURER" -eq 2 ]; then
         case "$MODELTYPE" in
             3)
                 echo "SoundCHEK PRO"
