@@ -92,7 +92,7 @@ mount_ref()
     else
         image="$(nextgen_slot_image "$ref")" || return 1
         loop="$(losetup -f)" || return 1
-        if ! losetup "$loop" "$image"; then
+        if ! losetup -r "$loop" "$image"; then
             return 1
         fi
         if ! mount -t squashfs -o ro "$loop" "$ACTIVE_MOUNT"; then
