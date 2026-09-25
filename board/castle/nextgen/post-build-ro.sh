@@ -3,6 +3,9 @@ set -eu
 
 TARGET_DIR="$1"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+BUILDROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)"
+WORKSPACE_DIR="$(CDPATH= cd -- "$BUILDROOT_DIR/.." && pwd)"
+APP_DIR="${NEXTGEN_APP_DIR:-$WORKSPACE_DIR/app}"
 OUT_DIR="$(dirname "$TARGET_DIR")"
 PRODUCT="$(cat "$TARGET_DIR/etc/nextgen-product")"
 
@@ -30,6 +33,16 @@ cp -a "$OLD_DATA/." "$PERSIST_SEED/data/"
 cp -a "$OLD_STATE/." "$PERSIST_SEED/state/"
 cp -a "$OLD_COMMON_STATE/." "$PERSIST_SEED/common-state/"
 cp -a "$OLD_APP/slotA" "$SLOT_SOURCE"
+
+# Certified/built-in templates are Application-release content. The old
+# staging tree placed them in writable data for historical reasons; remove
+# those copies from persist and put the authoritative set in the slot image.
+rm -rf "$PERSIST_SEED/data/$PRODUCT/Templates"
+mkdir -p "$PERSIST_SEED/data/$PRODUCT/Templates"
+if [ -d "$APP_DIR/Application/Files/SystemTemplates" ]; then
+    mkdir -p "$SLOT_SOURCE/Templates"
+    cp -a "$APP_DIR/Application/Files/SystemTemplates/." "$SLOT_SOURCE/Templates/"
+fi
 
 rm -rf "$ROOT/factory"
 mkdir -p "$FACTORY"
