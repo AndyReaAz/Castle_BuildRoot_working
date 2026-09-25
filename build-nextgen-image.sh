@@ -303,6 +303,8 @@ build_product()
         out="$NEXTGEN_BUILDROOT_OUT"
     elif [ "$PROFILE" = "6.18-bringup" ]; then
         out="$ROOT/output-nextgen-bringup-$product"
+    elif [ "$PROFILE" = "6.18-flash" ]; then
+        out="$ROOT/output-nextgen-flash-$product"
     elif [ "$PRODUCT_EXPLICIT" -eq 1 ]; then
         out="$ROOT/output-nextgen-$product"
     else
@@ -313,6 +315,13 @@ build_product()
     make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
 
     if [ "$PROFILE" = "6.18-bringup" ]; then
+        if [ -z "${NEXTGEN_PROVISION_BUNDLE_DIR:-}" ]; then
+            candidate_bundle="$ROOT/output-nextgen-flash-$product/images/provision-bundle"
+            if [ -d "$candidate_bundle" ]; then
+                NEXTGEN_PROVISION_BUNDLE_DIR="$candidate_bundle"
+                export NEXTGEN_PROVISION_BUNDLE_DIR
+            fi
+        fi
         grep -q '^BR2_PACKAGE_MTD=y$' "$out/.config" || {
             echo "error: bring-up image requires mtd-utils" >&2
             exit 1
@@ -399,6 +408,23 @@ build_product()
             exit 1
         }
         printf 'Production NAND UBI:    %s\n' "$out/images/rootfs.ubi"
+
+        prod_at91="$WORKSPACE/at91bootstrap/build-nor/binaries/boot.bin"
+        prod_uboot="$WORKSPACE/u-boot/build-prod/u-boot.bin"
+        [ -f "$prod_at91" ] || {
+            echo "error: production NOR AT91Bootstrap is missing: $prod_at91" >&2
+            echo "       build: ../at91bootstrap/build-fast.sh rebuild nor" >&2
+            exit 1
+        }
+        [ -f "$prod_uboot" ] || {
+            echo "error: production U-Boot is missing: $prod_uboot" >&2
+            echo "       build: ../u-boot/build-fast.sh rebuild prod" >&2
+            exit 1
+        }
+        bundle="$out/images/provision-bundle"
+        "$ROOT/board/castle/nextgen/make-production-provision-bundle.sh" \
+            "$bundle" "$prod_at91" "$prod_uboot" "$out/images/rootfs.ubi"
+        printf 'Provisioning bundle:    %s\n' "$bundle"
     fi
 
     if [ "$PROFILE" = "6.18-nand" ]; then
