@@ -239,41 +239,107 @@ if [ -n "$KERNEL_MODULES_ROOT" ]; then
     }
 fi
 
-if [ "$PROFILE" = "6.18-ro" ]; then
+if [ "$PROFILE" = "6.18-bringup" ]; then
+    grep -a -q 'FUSE: incompatible existing boot fuse; not modified' "$NEXTGEN_AT91BOOTSTRAP" || {
+        echo "error: bring-up AT91Bootstrap does not contain the NextGen fuse guard" >&2
+        echo "       rebuild at91bootstrap from chatgpt/ro-root-image-slots first" >&2
+        exit 1
+    }
+
+    [ -r "$KERNEL_BUILD_DIR/.config" ] || {
+        echo "error: bring-up kernel has no .config: $KERNEL_BUILD_DIR/.config" >&2
+        exit 1
+    }
+    for sym in MTD_SPI_NOR MTD_SPI_NAND MTD_UBI MTD_UBI_BLOCK UBIFS_FS SQUASHFS \
+               DRM DRM_FBDEV_EMULATION DRM_ATMEL_HLCDC VT VT_CONSOLE \
+               FRAMEBUFFER_CONSOLE FRAMEBUFFER_CONSOLE_DETECT_PRIMARY
+    do
+        grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
+            echo "error: bring-up kernel requires CONFIG_${sym}=y" >&2
+            echo "       rebuild linux-6.18 with: ./build-fast.sh rebuild bringup" >&2
+            exit 1
+        }
+    done
+
+    [ -f "$NEXTGEN_UBOOT_ENV_TEXT" ] || {
+        echo "error: bring-up U-Boot environment is missing: $NEXTGEN_UBOOT_ENV_TEXT" >&2
+        exit 1
+    }
+    grep -q 'console=ttyS0,576000' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+        { echo "error: bring-up environment lost the serial console" >&2; exit 1; }
+    grep -q 'vt.global_cursor_default=0' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+        { echo "error: bring-up environment does not suppress the VT cursor" >&2; exit 1; }
+    grep -q 'nextgen.env=bringup' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+        { echo "error: bring-up environment is missing nextgen.env=bringup" >&2; exit 1; }
+    ! grep -q 'console=tty0' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+        { echo "error: bring-up environment must not make LCD a kernel console" >&2; exit 1; }
+
+    for script in \
+        board/castle/nextgen/nextgen-bringup-screen \
+        board/castle/nextgen/nextgen-bringup.sh \
+        board/castle/nextgen/nextgen-provision-storage \
+        board/castle/nextgen/S01NextGenBringup \
+        board/castle/nextgen/post-build-bringup.sh
+    do
+        /bin/sh -n "$ROOT/$script" || {
+            echo "error: invalid bring-up shell script: $script" >&2
+            exit 1
+        }
+    done
+fi
+
+if [ "$STORAGE_SCHEMA" = "ro-persist-v1" ]; then
     [ -r "$KERNEL_BUILD_DIR/.config" ] || {
         echo "error: RO-root kernel has no .config: $KERNEL_BUILD_DIR/.config" >&2
         exit 1
     }
-    for sym in EXT4_FS BLK_DEV_LOOP SQUASHFS SQUASHFS_LZO; do
+    for sym in BLK_DEV_LOOP SQUASHFS SQUASHFS_LZO; do
         grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
             echo "error: RO-root kernel requires CONFIG_${sym}=y" >&2
-            echo "       rebuild linux-6.18 from chatgpt/ro-root-image-slots first" >&2
             exit 1
         }
     done
     grep -q '^CONFIG_BLK_DEV_LOOP_MIN_COUNT=4$' "$KERNEL_BUILD_DIR/.config" || {
         echo "error: RO-root kernel requires CONFIG_BLK_DEV_LOOP_MIN_COUNT=4" >&2
-        echo "       rebuild linux-6.18 from chatgpt/ro-root-image-slots first" >&2
         exit 1
     }
+
     [ -f "$NEXTGEN_UBOOT_ENV_TEXT" ] || {
-        echo "error: RO-root U-Boot environment is missing:" >&2
-        echo "       $NEXTGEN_UBOOT_ENV_TEXT" >&2
+        echo "error: RO-root U-Boot environment is missing: $NEXTGEN_UBOOT_ENV_TEXT" >&2
         exit 1
     }
     [ -z "${NEXTGEN_UBOOT_ENV:-}" ] || {
-        echo "error: RO-root profile refuses a prebuilt NEXTGEN_UBOOT_ENV override" >&2
-        echo "       the environment must be generated from the validated RO text source" >&2
+        echo "error: RO-root profiles refuse a prebuilt NEXTGEN_UBOOT_ENV override" >&2
         exit 1
     }
-    grep -q 'root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait' "$NEXTGEN_UBOOT_ENV_TEXT" || {
-        echo "error: RO-root U-Boot environment does not select read-only SquashFS p2" >&2
-        exit 1
-    }
-    grep -q 'nextgen.env=sd-ro' "$NEXTGEN_UBOOT_ENV_TEXT" || {
-        echo "error: RO-root U-Boot environment is missing nextgen.env=sd-ro" >&2
-        exit 1
-    }
+
+    case "$STORAGE_BACKEND" in
+        sd-ext4)
+            grep -q '^CONFIG_EXT4_FS=y$' "$KERNEL_BUILD_DIR/.config" ||
+                { echo "error: SD RO-root kernel requires CONFIG_EXT4_FS=y" >&2; exit 1; }
+            grep -q 'root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+                { echo "error: SD RO-root environment does not select SquashFS p2" >&2; exit 1; }
+            grep -q 'nextgen.env=sd-ro' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+                { echo "error: SD RO-root environment is missing nextgen.env=sd-ro" >&2; exit 1; }
+            ;;
+        nand-ubi)
+            for sym in SPI SPI_ATMEL SPI_ATMEL_QUADSPI MTD MTD_SPI_NAND MTD_UBI MTD_UBI_BLOCK UBIFS_FS UBIFS_FS_LZO; do
+                grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" ||
+                    { echo "error: NAND RO-root kernel requires CONFIG_${sym}=y" >&2; exit 1; }
+            done
+            grep -q 'ubi.mtd=rootfs' "$NEXTGEN_UBOOT_ENV_TEXT" &&
+            grep -q 'ubi.block=0,system' "$NEXTGEN_UBOOT_ENV_TEXT" &&
+            grep -q 'root=/dev/ubiblock0_0 rootfstype=squashfs ro rootwait' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+                { echo "error: production environment does not select system SquashFS ubiblock" >&2; exit 1; }
+            grep -q 'nextgen.env=flash' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+                { echo "error: production environment is missing nextgen.env=flash" >&2; exit 1; }
+            grep -q 'ubi part boot' "$NEXTGEN_UBOOT_ENV_TEXT" &&
+            grep -q 'ubi read ${loadaddr} device-tree' "$NEXTGEN_UBOOT_ENV_TEXT" &&
+            grep -q 'ubi read ${krnladdr} kernel' "$NEXTGEN_UBOOT_ENV_TEXT" ||
+                { echo "error: production environment does not load boot UBI objects" >&2; exit 1; }
+            ;;
+        *) echo "error: unknown RO storage backend $STORAGE_BACKEND" >&2; exit 1 ;;
+    esac
 
     for script in \
         board/castle/nextgen/persist-init-ro.sh \
@@ -284,7 +350,6 @@ if [ "$PROFILE" = "6.18-ro" ]; then
         board/castle/nextgen/post-build-ro.sh \
         board/castle/nextgen/post-image-ro.sh \
         board/castle/nextgen/verify-target-ro-layout.sh \
-        board/castle/nextgen/write-sd-card-ro.sh \
         board/castle/nextgen/tests/test-update-state.sh \
         board/castle/nextgen/tests/test-sshd-start.sh \
         board/castle/nextgen/tests/test-usb-identity.sh
@@ -294,6 +359,18 @@ if [ "$PROFILE" = "6.18-ro" ]; then
             exit 1
         }
     done
+    if [ "$STORAGE_BACKEND" = sd-ext4 ]; then
+        /bin/sh -n "$ROOT/board/castle/nextgen/write-sd-card-ro.sh" || exit 1
+    else
+        for script in board/castle/nextgen/program-nextgen-flash.sh \
+                      board/castle/nextgen/make-production-provision-bundle.sh
+        do
+            /bin/sh -n "$ROOT/$script" || {
+                echo "error: invalid production-flash shell script: $script" >&2
+                exit 1
+            }
+        done
+    fi
 
     for test in test-update-state.sh test-sshd-start.sh test-usb-identity.sh; do
         /bin/sh "$ROOT/board/castle/nextgen/tests/$test" || {
