@@ -220,6 +220,27 @@ build_product()
 
     make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
 
+    if [ "$PROFILE" = "6.18-ro" ]; then
+        for sym in \
+            BR2_TARGET_ROOTFS_SQUASHFS \
+            BR2_TARGET_ROOTFS_SQUASHFS4_LZO \
+            BR2_PACKAGE_E2FSPROGS \
+            BR2_PACKAGE_HOST_E2FSPROGS \
+            BR2_PACKAGE_HOST_GENIMAGE
+        do
+            grep -q "^$sym=y$" "$out/.config" || {
+                echo "error: RO-root Buildroot config requires $sym=y" >&2
+                exit 1
+            }
+        done
+        for sym in BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW BR2_TARGET_ROOTFS_EXT2 BR2_TARGET_ROOTFS_UBI; do
+            if grep -q "^$sym=y$" "$out/.config"; then
+                echo "error: RO-root Buildroot config unexpectedly enables $sym" >&2
+                exit 1
+            fi
+        done
+    fi
+
     printf 'NextGen image profile: %s\n' "$PROFILE"
     printf 'NextGen product:       %s\n' "$product"
     printf 'Kernel build:          %s\n' "$KERNEL_BUILD_DIR"
