@@ -104,17 +104,9 @@ BR2_TARGET_ROOTFS_SQUASHFS=y
 BR2_TARGET_ROOTFS_SQUASHFS4_LZO=y
 # BR2_TARGET_ROOTFS_SQUASHFS_EXTREME_COMP is not set
 
-# Parallel NAND-root image for the 128 MiB SPI-NAND rootfs partition.
-# Winbond geometry on NextGen: 128 KiB PEB, 2 KiB minimum I/O, no
-# sub-page programming. UBI therefore places EC/VID headers in separate
-# pages and exposes a 0x1f000-byte (126976-byte) LEB to UBIFS.
-BR2_TARGET_ROOTFS_UBI=y
-BR2_TARGET_ROOTFS_UBI_PEBSIZE=0x20000
-BR2_TARGET_ROOTFS_UBI_SUBSIZE=0
-BR2_TARGET_ROOTFS_UBIFS_LEBSIZE=0x1f000
-BR2_TARGET_ROOTFS_UBIFS_MINIOSIZE=0x800
-BR2_TARGET_ROOTFS_UBIFS_MAXLEBCNT=1000
-BR2_TARGET_ROOTFS_UBIFS_RT_LZO=y
+# NAND mirroring is deliberately out of scope for this SD bring-up profile.
+# Keep the existing NAND profiles separate until the four-partition RO layout
+# is proven on hardware.
 # Host tools used directly by the NextGen post-build/post-image hooks.
 # Do not explicitly select host GDB, QEMU, DTC or Python feature bundles here.
 # Buildroot may still pull a minimal host Python/DTC/etc. transitively when a
