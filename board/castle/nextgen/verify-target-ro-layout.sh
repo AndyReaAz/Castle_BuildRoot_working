@@ -76,12 +76,30 @@ if [ "$PRODUCT" = sound ]; then
         fail "release template directory is missing from factory fallback"
     [ -d "$PERSIST_SEED/data/sound/Templates" ] ||
         fail "persistent user-template directory is missing"
-    [ -n "$(find "$SLOT_SOURCE/Templates" -mindepth 1 -maxdepth 1 -type f -name '*.json' -print -quit)" ] ||
-        fail "slot source has no JSON release templates"
-    [ -n "$(find "$ROOT/factory/sound/Templates" -mindepth 1 -maxdepth 1 -type f -name '*.json' -print -quit)" ] ||
-        fail "factory fallback has no JSON release templates"
+
+    for seed in Settings0.json Settings1.json CalFile.json FacCalFile.json FTPQueue.json; do
+        [ -s "$PERSIST_SEED/data/sound/$seed" ] ||
+            fail "persistent sound JSON seed $seed is missing"
+    done
+
+    for template_dir in "$SLOT_SOURCE/Templates" "$ROOT/factory/sound/Templates"; do
+        [ -n "$(find "$template_dir" -mindepth 1 -maxdepth 1 -type f -name '*.json' -print -quit)" ] ||
+            fail "$template_dir has no JSON release templates"
+        for template in "$template_dir"/*.json; do
+            [ -f "$template" ] || continue
+            grep -Eq '"FileFormat"[[:space:]]*:[[:space:]]*"NextGenTemplate"' "$template" ||
+                fail "release template lacks NextGenTemplate metadata: $template"
+            grep -Eq '"SchemaVersion"[[:space:]]*:[[:space:]]*1([,[:space:]}]|$)' "$template" ||
+                fail "release template lacks schema version 1: $template"
+        done
+    done
+
     [ -z "$(find "$SLOT_SOURCE/Templates" "$ROOT/factory/sound/Templates" "$PERSIST_SEED/data/sound/Templates" -type f -name '*.tpl' -print -quit)" ] ||
         fail "obsolete .tpl template survived RO staging"
+    for obsolete in SettingsJSON0.dat SettingsJSON1.dat CalFile.dat FacCalFile.dat FTPQueue.dat; do
+        [ ! -e "$PERSIST_SEED/data/sound/$obsolete" ] ||
+            fail "obsolete mutable state survived RO staging: $obsolete"
+    done
 else
     [ ! -e "$SLOT_SOURCE/Templates" ] ||
         fail "sound release templates leaked into vibration slot source"
