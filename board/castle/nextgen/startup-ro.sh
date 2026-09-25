@@ -218,19 +218,22 @@ else
     choice="$(choose_known_good "" "" 2>/dev/null || true)"
 fi
 
-repair_factory_acceptance()
+repair_missing_acceptance()
 {
-    version="$1"
+    ref="$1"
+    version="$2"
 
-    # Factory is immutable platform content and is the final recovery trust
-    # anchor. If persistent state has been lost or names an invalid image,
-    # establish factory as known-good so subsequent routine updates can stage
-    # normally instead of leaving the meter permanently update-ineligible.
+    # If persistent accepted state is absent or names an invalid image, the
+    # launcher may still recover through previous or immutable factory. Once a
+    # validated fallback has actually mounted, make that reference authoritative
+    # again so future routine updates are not permanently blocked by the stale
+    # accepted record. Never rewrite a still-valid accepted reference merely
+    # because its mount failed transiently.
     if [ -z "$(read_state_ref "$ACCEPTED" 2>/dev/null || true)" ]; then
-        printf 'factory %s\n' "$version" > "$STATE_ROOT/.accepted.tmp"
+        printf '%s %s\n' "$ref" "$version" > "$STATE_ROOT/.accepted.tmp"
         sync
         mv -f "$STATE_ROOT/.accepted.tmp" "$ACCEPTED"
-        printf 'factory %s\n' "$version" > "$STATE_ROOT/.previous.tmp"
+        printf '%s %s\n' "$ref" "$version" > "$STATE_ROOT/.previous.tmp"
         sync
         mv -f "$STATE_ROOT/.previous.tmp" "$PREVIOUS"
         sync
@@ -266,9 +269,7 @@ if ! mount_ref "$ref" "$version"; then
     }
 fi
 
-if [ "$ref" = factory ]; then
-    repair_factory_acceptance "$version"
-fi
+repair_missing_acceptance "$ref" "$version"
 
 echo "Launching NextGen $PRODUCT $ref version $version"
 exec "$ACTIVE_MOUNT/NextGen"
