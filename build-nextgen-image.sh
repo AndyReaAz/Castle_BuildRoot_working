@@ -38,6 +38,8 @@ fi
 KERNEL_PROFILE="$PROFILE"
 KERNEL_MODULES_ROOT=""
 EXPECTED_KERNEL_RELEASE=""
+BUILDROOT_DEFCONFIG="castle_nextgen_dev_defconfig"
+STORAGE_SCHEMA="legacy"
 
 case "$PROFILE" in
     baseline)
@@ -66,6 +68,21 @@ case "$PROFILE" in
         NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-fast/tools/mkenvimage"
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE
         ;;
+    6.18-ro)
+        # Isolated RO-root prototype: boot/kernel/DTB remain on SD, p2 is
+        # immutable SquashFS, p3 is writable persistent state and p4 is data.
+        KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
+        KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
+        EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
+        KERNEL_PROFILE="deferred"
+        BUILDROOT_DEFCONFIG="castle_nextgen_ro_dev_defconfig"
+        STORAGE_SCHEMA="ro-persist-v1"
+        NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-sd/binaries/boot.bin"
+        NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-fast/u-boot.bin"
+        NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-fast/tools/mkenvimage"
+        NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_ro.env"
+        export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
+        ;;
     6.18-nand)
         # Timing profile: keep bootstrap/U-Boot/kernel/DTB on SD and move only
         # the Linux root filesystem to the SPI-NAND rootfs UBI volume.
@@ -91,7 +108,7 @@ case "$PROFILE" in
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     *)
-        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-nand|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
+        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-ro|6.18-nand|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
         exit 2
         ;;
 esac
@@ -146,12 +163,14 @@ build_product()
         out="$ROOT/output-nextgen"
     fi
 
-    make -C "$ROOT" O="$out" castle_nextgen_dev_defconfig
+    make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
 
     printf 'NextGen image profile: %s\n' "$PROFILE"
     printf 'NextGen product:       %s\n' "$product"
     printf 'Kernel build:          %s\n' "$KERNEL_BUILD_DIR"
     printf 'Kernel policy:         %s\n' "$KERNEL_PROFILE"
+    printf 'Storage schema:        %s\n' "$STORAGE_SCHEMA"
+    printf 'Buildroot defconfig:   %s\n' "$BUILDROOT_DEFCONFIG"
     printf 'Buildroot output:      %s\n' "$out"
     if [ -n "$KERNEL_MODULES_ROOT" ]; then
         printf 'Kernel modules:        %s\n' "$KERNEL_MODULES_ROOT"
@@ -167,6 +186,7 @@ build_product()
     NEXTGEN_KERNEL_MODULES_ROOT="$KERNEL_MODULES_ROOT" \
     NEXTGEN_EXPECTED_KERNEL_RELEASE="$EXPECTED_KERNEL_RELEASE" \
     NEXTGEN_KERNEL_PROFILE="$KERNEL_PROFILE" \
+    NEXTGEN_STORAGE_SCHEMA="$STORAGE_SCHEMA" \
         make -C "$ROOT" O="$out" "$@"
 
     if [ "$PROFILE" = "6.18-nand" ]; then
@@ -175,6 +195,17 @@ build_product()
             exit 1
         }
         printf 'NAND rootfs image:      %s\n' "$out/images/rootfs.ubi"
+    fi
+
+    if [ "$PROFILE" = "6.18-ro" ]; then
+        for artifact in rootfs.squashfs persist.ext4 sdcard.img; do
+            [ -f "$out/images/$artifact" ] || {
+                echo "error: RO-root profile did not produce $out/images/$artifact" >&2
+                exit 1
+            }
+        done
+        printf 'RO system image:        %s\n' "$out/images/rootfs.squashfs"
+        printf 'Persistent image:       %s\n' "$out/images/persist.ext4"
     fi
 
     printf 'Built product:          %s\n' "$product"
