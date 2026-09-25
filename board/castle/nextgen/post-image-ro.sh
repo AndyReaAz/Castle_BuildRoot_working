@@ -124,6 +124,7 @@ done
 # Verify the system image that will actually be written, not only TARGET_DIR.
 SYSTEM_SCHEMA="$("$UNSQUASHFS" -cat "$BINARIES_DIR/rootfs.squashfs"     etc/nextgen-storage-schema 2>/dev/null || true)"
 SYSTEM_ABI="$("$UNSQUASHFS" -cat "$BINARIES_DIR/rootfs.squashfs"     etc/nextgen-platform-abi 2>/dev/null || true)"
+SYSTEM_FSTAB="$("$UNSQUASHFS" -cat "$BINARIES_DIR/rootfs.squashfs"     etc/fstab 2>/dev/null || true)"
 [ "$SYSTEM_SCHEMA" = "ro-persist-v1" ] || {
     echo "error: generated SquashFS has wrong storage schema: '$SYSTEM_SCHEMA'" >&2
     exit 1
@@ -132,6 +133,20 @@ SYSTEM_ABI="$("$UNSQUASHFS" -cat "$BINARIES_DIR/rootfs.squashfs"     etc/nextgen
     echo "error: generated SquashFS has wrong platform ABI: '$SYSTEM_ABI'" >&2
     exit 1
 }
+printf '%s\n' "$SYSTEM_FSTAB" |
+    grep -q '^/dev/root[[:space:]]\+/[[:space:]]\+squashfs[[:space:]]\+ro' || {
+        echo "error: generated SquashFS fstab does not declare read-only root" >&2
+        exit 1
+    }
+printf '%s\n' "$SYSTEM_FSTAB" |
+    grep -q '^/dev/mmcblk0p3[[:space:]]\+/persist[[:space:]]\+ext4' || {
+        echo "error: generated SquashFS fstab has no p3 /persist mount" >&2
+        exit 1
+    }
+if printf '%s\n' "$SYSTEM_FSTAB" | grep -q '^[^#].*[[:space:]]/sdcard[[:space:]]'; then
+    echo "error: generated SquashFS fstab must not mount /sdcard" >&2
+    exit 1
+fi
 
 # A freshly-created persist image must be internally consistent before it is
 # embedded in the card image. e2fsck -n never modifies the image.
@@ -159,7 +174,22 @@ PERSIST_ACCEPTED="$("$DEBUGFS" -R "cat /state/$PRODUCT/accepted"     "$PERSIST_I
     exit 1
 }
 
-echo "NextGen RO image verification: system + persist OK"
+# Verify the environment actually copied into the FAT image. A correct side
+# file is not enough if mcopy/staging ever regresses.
+BOOT_ENV_CHECK="$OUTPUT_DIR/.nextgen-boot-env-check"
+rm -f "$BOOT_ENV_CHECK"
+"$HOST_DIR/bin/mcopy" -i "$BINARIES_DIR/boot.vfat" "::/uboot.env" "$BOOT_ENV_CHECK" >/dev/null 2>&1 || {
+    echo "error: boot.vfat does not contain uboot.env" >&2
+    exit 1
+}
+cmp -s "$BOOT_ENV_CHECK" "$BINARIES_DIR/uboot.env" || {
+    rm -f "$BOOT_ENV_CHECK"
+    echo "error: boot.vfat uboot.env differs from staged environment" >&2
+    exit 1
+}
+rm -f "$BOOT_ENV_CHECK"
+
+echo "NextGen RO image verification: boot + system + persist OK"
 
 # The raw image is useful for inspection.  For real removable media the
 # generated writer below is preferred because it extends p4 to the actual card
