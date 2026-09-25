@@ -76,8 +76,12 @@ if [ "$PRODUCT" = sound ]; then
         fail "release template directory is missing from factory fallback"
     [ -d "$PERSIST_SEED/data/sound/Templates" ] ||
         fail "persistent user-template directory is missing"
-    [ -z "$(find "$PERSIST_SEED/data/sound/Templates" -mindepth 1 -maxdepth 1 -type f -name '*.tpl' -print -quit)" ] ||
-        fail "release templates leaked into persistent user-template storage"
+    [ -n "$(find "$SLOT_SOURCE/Templates" -mindepth 1 -maxdepth 1 -type f -name '*.json' -print -quit)" ] ||
+        fail "slot source has no JSON release templates"
+    [ -n "$(find "$ROOT/factory/sound/Templates" -mindepth 1 -maxdepth 1 -type f -name '*.json' -print -quit)" ] ||
+        fail "factory fallback has no JSON release templates"
+    [ -z "$(find "$SLOT_SOURCE/Templates" "$ROOT/factory/sound/Templates" "$PERSIST_SEED/data/sound/Templates" -type f -name '*.tpl' -print -quit)" ] ||
+        fail "obsolete .tpl template survived RO staging"
 else
     [ ! -e "$SLOT_SOURCE/Templates" ] ||
         fail "sound release templates leaked into vibration slot source"
@@ -111,7 +115,9 @@ done
 
 [ ! -e "$ROOT/app/$PRODUCT/slotA" ] ||
     fail "directory slot leaked into immutable root"
-[ ! -e "$ROOT/data/$PRODUCT/SettingsJSON0.dat" ] ||
+[ ! -e "$ROOT/data/$PRODUCT/Settings0.json" ] ||
     fail "mutable settings leaked into immutable root"
+[ ! -e "$ROOT/data/$PRODUCT/SettingsJSON0.dat" ] ||
+    fail "obsolete settings format leaked into immutable root"
 
 echo "NextGen RO target layout OK: product=$PRODUCT"
