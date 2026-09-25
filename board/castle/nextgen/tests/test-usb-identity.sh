@@ -92,6 +92,19 @@ write_fixture "$S1" 11 654321 2 3 1
 assert_identity "$(identity sound)" 654321 2 3 "SKC" "SoundCHEK PRO"
 echo "PASS: newest valid settings generation supplies sound USB identity"
 
+python3 - "$S1" <<'PY'
+import struct
+import sys
+path = sys.argv[1]
+with open(path, "rb") as f:
+    data = f.read()
+with open(path, "wb") as f:
+    f.write(struct.pack("<I", 12))
+    f.write(data[4:])
+PY
+assert_identity "$(identity sound)" 123456 1 1 "Castle Group" "dBAir"
+echo "PASS: generation header/JSON index mismatch is rejected"
+
 write_fixture "$S1" 12 999999 2 3 0
 assert_identity "$(identity sound)" 123456 1 1 "Castle Group" "dBAir"
 echo "PASS: newer malformed settings file is ignored"
