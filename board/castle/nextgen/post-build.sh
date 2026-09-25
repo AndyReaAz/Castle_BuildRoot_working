@@ -218,13 +218,10 @@ if [ -f "$TARGET_DIR/etc/init.d/S80dnsmasq" ]; then
         "$TARGET_DIR/etc/init.d/dnsmasq"
 fi
 
-# The application has its own persistent logging. rsyslog is useful for
-# engineering/kernel diagnostics but is not required for normal operation, so
-# keep it installed without letting it compete with early UI/measurement work.
-if [ -f "$TARGET_DIR/etc/init.d/S01rsyslogd" ]; then
-    mv "$TARGET_DIR/etc/init.d/S01rsyslogd" \
-        "$TARGET_DIR/etc/init.d/rsyslogd"
-fi
+# rsyslog is no longer part of the NextGen target.  Incremental output trees
+# may retain an old init entry after the package is deselected; never let that
+# stale service reappear in an otherwise updated image.
+rm -f "$TARGET_DIR/etc/init.d/S01rsyslogd" "$TARGET_DIR/etc/init.d/rsyslogd"
 
 # /etc/network/interfaces contains only loopback. S00NextGen brings lo up
 # directly before the application, so the generic ifupdown pass is redundant.
