@@ -50,6 +50,8 @@ MEMBERS="$STATE_ROOT/.members.tmp"
 MANIFEST_TMP="$STATE_ROOT/.manifest.tmp"
 SIG_TMP="$STATE_ROOT/.manifest-signature.tmp"
 IMAGE_TMP=
+META_TMP=
+SLOT_SIG_TMP=
 LOOP=
 
 . "$ROOT/platform/bin/nextgen-slot-common.sh"
@@ -61,6 +63,8 @@ cleanup()
     fi
     [ -z "$LOOP" ] || losetup -d "$LOOP" 2>/dev/null || true
     [ -z "$IMAGE_TMP" ] || rm -f "$IMAGE_TMP"
+    [ -z "$META_TMP" ] || rm -f "$META_TMP"
+    [ -z "$SLOT_SIG_TMP" ] || rm -f "$SLOT_SIG_TMP"
     rm -f "$MEMBERS" "$MANIFEST_TMP" "$SIG_TMP" "$STATE_ROOT/.pending.tmp" "$STATE_ROOT/.cleanup.tmp"
     rmdir "$ACTIVE_MOUNT" 2>/dev/null || true
     rmdir "$LOCK" 2>/dev/null || true
@@ -203,7 +207,8 @@ mv -f "$IMAGE_TMP" "$APP_ROOT/$NEW.sqfs"
 IMAGE_TMP=
 sync
 
-cat > "$APP_ROOT/.$NEW.meta.tmp" <<EOF
+META_TMP="$APP_ROOT/.$NEW.meta.tmp"
+cat > "$META_TMP" <<EOF
 format=4
 product=$PRODUCT
 version=$version
@@ -212,11 +217,14 @@ bytes=$image_bytes
 sha256=$image_sha
 EOF
 sync
-mv -f "$APP_ROOT/.$NEW.meta.tmp" "$APP_ROOT/$NEW.meta"
+mv -f "$META_TMP" "$APP_ROOT/$NEW.meta"
+META_TMP=
 if [ "$signature_count" -eq 1 ]; then
-    cp "$SIG_TMP" "$APP_ROOT/.$NEW.sig.tmp"
+    SLOT_SIG_TMP="$APP_ROOT/.$NEW.sig.tmp"
+    cp "$SIG_TMP" "$SLOT_SIG_TMP"
     sync
-    mv -f "$APP_ROOT/.$NEW.sig.tmp" "$APP_ROOT/$NEW.sig"
+    mv -f "$SLOT_SIG_TMP" "$APP_ROOT/$NEW.sig"
+    SLOT_SIG_TMP=
 else
     rm -f "$APP_ROOT/$NEW.sig"
 fi
