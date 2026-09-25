@@ -125,6 +125,18 @@ The physical p4 partition is created to the end of the actual card by
 `write-sd-card.sh`. The generated `sdcard.img` contains a small seed p4 and
 is mainly useful for inspection.
 
+`/sdcard` is deliberately not mounted by `fstab`. The Application owns the
+recording filesystem mount so it can validate partition geometry, run ext4
+recovery and verify write/fsync behaviour before exposing storage.
+
+The Application supports both migration stages: while the system itself is on
+SD, recording storage is the final partition after the system partitions; once
+the platform boots completely independently of SD, recording storage is p1.
+A future fully SD-independent flash profile must install the immutable
+`/etc/nextgen-sd-data-only` marker before allowing Format Memory to replace
+the whole card with one p1. Do not install that marker in `6.18-ro` or the
+current NAND timing profile because those profiles still consume SD.
+
 Above the mount layer the Application sees stable paths:
 
 ```text
