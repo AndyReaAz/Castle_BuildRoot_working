@@ -84,20 +84,18 @@ fi
 # which case usbcontrol.sh must still return the all-zero generic identity.
 USB_IDENTITY="$(
     NEXTGEN_PRODUCT="$PRODUCT" \
-    NEXTGEN_SETTINGS0="$DATA/SettingsJSON0.dat" \
-    NEXTGEN_SETTINGS1="$DATA/SettingsJSON1.dat" \
+    NEXTGEN_SETTINGS0="$DATA/Settings0.json" \
+    NEXTGEN_SETTINGS1="$DATA/Settings1.json" \
         /bin/sh "$BIN/usbcontrol.sh" identity
 )" || fail "usbcontrol.sh identity parsing failed"
-for field in SerialNumber Manufacturer ModelType; do
-    value="$(printf '%s\n' "$USB_IDENTITY" | sed -n "s/^$field=//p")"
-    case "$value" in
-        ''|*[!0-9]*) fail "usbcontrol.sh returned invalid $field identity" ;;
-    esac
-done
-for field in ManufacturerName ProductName; do
+for field in UsbSerial UsbManufacturer UsbProduct; do
     value="$(printf '%s\n' "$USB_IDENTITY" | sed -n "s/^$field=//p")"
     [ -n "$value" ] || fail "usbcontrol.sh returned empty $field"
 done
+usb_serial="$(printf '%s\n' "$USB_IDENTITY" | sed -n 's/^UsbSerial=//p')"
+case "$usb_serial" in
+    *[!0-9]*) fail "usbcontrol.sh returned invalid UsbSerial" ;;
+esac
 
 for font in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
     [ -r "$COMMON_SHARE/$font" ] || fail "platform font $font is missing"
@@ -111,9 +109,13 @@ done
 # rootfs-overlay-dev.  Catch any future layout migration that deletes the
 # historical /root/Exec overlay before importing these mutable files.
 if [ "$PRODUCT" = sound ]; then
-    for seed in SettingsJSON0.dat SettingsJSON1.dat CalFile.dat FacCalFile.dat; do
+    for seed in Settings0.json Settings1.json CalFile.dat FacCalFile.dat; do
         [ -s "$DATA/$seed" ] || fail "development sound seed $seed is missing or empty"
     done
+    [ ! -e "$DATA/SettingsJSON0.dat" ] ||
+        fail "legacy SettingsJSON0.dat survived staging"
+    [ ! -e "$DATA/SettingsJSON1.dat" ] ||
+        fail "legacy SettingsJSON1.dat survived staging"
     [ -f "$COMMON_STATE/engmode" ] ||
         fail "development engineering-mode seed is missing"
 fi
