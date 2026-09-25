@@ -306,6 +306,18 @@ test_corrupt_hash_fallback()
     pass "corrupt image hash is rejected before execution"
 }
 
+test_invalid_accepted_repairs_previous()
+{
+    c="$TMP/accepted-corrupt"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111
+    printf 'slotA 110\n' > "$c/root/state/sound/previous"
+    chmod 0644 "$c/root/app/sound/slotA.sqfs"; printf corrupt >> "$c/root/app/sound/slotA.sqfs"; chmod 0444 "$c/root/app/sound/slotA.sqfs"
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotB 111" "previous fallback runtime"
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotB 111" "accepted repaired to fallback"
+    assert_eq "$(cat "$c/root/state/sound/previous")" "slotB 111" "previous repaired with fallback"
+    pass "invalid accepted image repairs state to mounted previous fallback"
+}
+
 test_factory_repairs_empty_state()
 {
     c="$TMP/factory"; make_fixture "$c"; make_factory "$c/root" sound 100
@@ -382,6 +394,7 @@ for t in \
     test_accepted_before_marker_cleanup_power_loss \
     test_mount_failure_fallback \
     test_corrupt_hash_fallback \
+    test_invalid_accepted_repairs_previous \
     test_factory_repairs_empty_state \
     test_manifest_image_disagreement_rejected \
     test_equal_version_rejected \
