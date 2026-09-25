@@ -8,7 +8,8 @@ case "$PRODUCT" in sound|vibra) ;; *) exit 2 ;; esac
 ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
 SDCARD_ROOT="${NEXTGEN_SDCARD_ROOT:-/sdcard}"
 MOUNTS_FILE="${NEXTGEN_MOUNTS_FILE:-/proc/mounts}"
-PLATFORM_ABI="$(cat /etc/nextgen-platform-abi 2>/dev/null || true)"
+PLATFORM_ABI_FILE="${NEXTGEN_PLATFORM_ABI_FILE:-/etc/nextgen-platform-abi}"
+PLATFORM_ABI="$(cat "$PLATFORM_ABI_FILE" 2>/dev/null || true)"
 case "$PLATFORM_ABI" in ''|*[!0-9]*) exit 1 ;; esac
 
 APP_ROOT="$ROOT/app/$PRODUCT"
