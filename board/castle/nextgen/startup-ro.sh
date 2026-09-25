@@ -112,8 +112,10 @@ mount_ref()
 choose_known_good()
 {
     preferred="$1"
+    exclude="$2"
 
-    if nextgen_valid_ref "$preferred" &&
+    if [ "$preferred" != "$exclude" ] &&
+       nextgen_valid_ref "$preferred" &&
        nextgen_slot_valid "$preferred"; then
         version="$(nextgen_slot_version "$preferred")"
         printf '%s %s\n' "$preferred" "$version"
@@ -122,17 +124,23 @@ choose_known_good()
 
     accepted="$(read_state_ref "$ACCEPTED" 2>/dev/null || true)"
     if [ -n "$accepted" ]; then
-        printf '%s\n' "$accepted"
-        return 0
+        set -- $accepted
+        if [ "$1" != "$exclude" ]; then
+            printf '%s\n' "$accepted"
+            return 0
+        fi
     fi
 
     previous="$(read_state_ref "$PREVIOUS" 2>/dev/null || true)"
     if [ -n "$previous" ]; then
-        printf '%s\n' "$previous"
-        return 0
+        set -- $previous
+        if [ "$1" != "$exclude" ]; then
+            printf '%s\n' "$previous"
+            return 0
+        fi
     fi
 
-    if nextgen_slot_valid factory; then
+    if [ "$exclude" != factory ] && nextgen_slot_valid factory; then
         printf 'factory %s\n' "$(nextgen_slot_version factory)"
         return 0
     fi
@@ -141,11 +149,13 @@ choose_known_good()
 }
 
 choice=
+old=
+new=
 
 if [ -f "$ROLLBACK" ]; then
     rm -f "$PENDING" "$BOOTING"
     sync
-    choice="$(choose_known_good "" 2>/dev/null || true)"
+    choice="$(choose_known_good "" "" 2>/dev/null || true)"
 elif [ -f "$PENDING" ]; then
     new=
     old=
@@ -168,7 +178,7 @@ elif [ -f "$PENDING" ]; then
     if [ "$pending_ok" -ne 1 ]; then
         echo "NextGen launcher: invalid pending image; rolling back"
         mark_rollback
-        choice="$(choose_known_good "$old" 2>/dev/null || true)"
+        choice="$(choose_known_good "$old" "$new" 2>/dev/null || true)"
     else
         accepted_line="$(cat "$ACCEPTED" 2>/dev/null || true)"
         booting="$(cat "$BOOTING" 2>/dev/null || true)"
@@ -196,7 +206,7 @@ elif [ -f "$PENDING" ]; then
     fi
 else
     rm -f "$BOOTING"
-    choice="$(choose_known_good "" 2>/dev/null || true)"
+    choice="$(choose_known_good "" "" 2>/dev/null || true)"
 fi
 
 [ -n "$choice" ] || {
@@ -209,15 +219,23 @@ ref="$1"
 version="$2"
 
 if ! mount_ref "$ref" "$version"; then
-    echo "NextGen launcher: failed to mount $ref; trying factory fallback" >&2
-    [ "$ref" = factory ] || mark_rollback
-    ref=factory
-    version="$(nextgen_slot_version factory 2>/dev/null || true)"
-    [ -n "$version" ] && nextgen_slot_valid factory &&
-        mount_ref factory "$version" || {
-            echo "NextGen launcher: no mountable application" >&2
-            exit 111
-        }
+    echo "NextGen launcher: failed to mount $ref; selecting fallback" >&2
+    if [ -f "$PENDING" ]; then
+        mark_rollback
+    fi
+
+    fallback="$(choose_known_good "$old" "$ref" 2>/dev/null || true)"
+    [ -n "$fallback" ] || {
+        echo "NextGen launcher: no fallback application" >&2
+        exit 111
+    }
+    set -- $fallback
+    ref="$1"
+    version="$2"
+    mount_ref "$ref" "$version" || {
+        echo "NextGen launcher: fallback $ref is not mountable" >&2
+        exit 111
+    }
 fi
 
 echo "Launching NextGen $PRODUCT $ref version $version"
