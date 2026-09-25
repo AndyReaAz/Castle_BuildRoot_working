@@ -96,6 +96,23 @@ case "$PROFILE" in
         NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_nand.env"
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
+    6.18-flash)
+        # Production flash chain:
+        # ROM -> AT91Bootstrap (NOR) -> U-Boot (NOR) -> boot UBI (SPI-NAND)
+        # -> rootfs UBI (SPI-NAND).
+        KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
+        KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
+        EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
+        KERNEL_PROFILE="deferred"
+        STORAGE_SCHEMA="flash-ubi-v1"
+        NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-nor/binaries/boot.bin"
+        NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-flash/u-boot.bin"
+        NEXTGEN_UBOOT_TRAILER="$WORKSPACE/u-boot/build-flash/u-boot.nor-trailer"
+        NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-flash/tools/mkenvimage"
+        NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_flash.env"
+        export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_UBOOT_TRAILER
+        export NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
+        ;;
     6.18-diag)
         KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
         KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
@@ -108,7 +125,7 @@ case "$PROFILE" in
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     *)
-        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-ro|6.18-nand|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
+        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-ro|6.18-nand|6.18-flash|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
         exit 2
         ;;
 esac
@@ -135,6 +152,18 @@ if [ -n "${NEXTGEN_UBOOT_IMAGE:-}" ]; then
     [ -f "$NEXTGEN_UBOOT_IMAGE" ] || {
         echo "error: selected profile has no U-Boot image:" >&2
         echo "       $NEXTGEN_UBOOT_IMAGE" >&2
+        exit 1
+    }
+fi
+
+if [ "$PROFILE" = "6.18-flash" ]; then
+    [ -f "$NEXTGEN_UBOOT_TRAILER" ] || {
+        echo "error: flash profile has no U-Boot NOR trailer:" >&2
+        echo "       $NEXTGEN_UBOOT_TRAILER" >&2
+        exit 1
+    }
+    [ "$(wc -c < "$NEXTGEN_UBOOT_TRAILER" | tr -d '[:space:]')" -eq 16 ] || {
+        echo "error: U-Boot NOR trailer must be exactly 16 bytes" >&2
         exit 1
     }
 fi
@@ -283,6 +312,26 @@ build_product()
             exit 1
         }
         printf 'NAND rootfs image:      %s\n' "$out/images/rootfs.ubi"
+    fi
+
+    if [ "$PROFILE" = "6.18-flash" ]; then
+        for artifact in boot.ubi rootfs.ubi nor.img nextgen-flash-manifest.sha256; do
+            [ -f "$out/images/$artifact" ] || {
+                echo "error: flash profile did not produce $out/images/$artifact" >&2
+                exit 1
+            }
+        done
+        [ "$(wc -c < "$out/images/nor.img")" -eq $((0x200000)) ] || {
+            echo "error: NOR programming image is not exactly 2 MiB" >&2
+            exit 1
+        }
+        [ "$(wc -c < "$out/images/boot.ubi")" -le $((0x00880000)) ] || {
+            echo "error: boot.ubi exceeds the 8.5 MiB boot partition" >&2
+            exit 1
+        }
+        printf 'NOR programming image: %s\n' "$out/images/nor.img"
+        printf 'NAND boot UBI image:   %s\n' "$out/images/boot.ubi"
+        printf 'NAND rootfs UBI image: %s\n' "$out/images/rootfs.ubi"
     fi
 
     if [ "$PROFILE" = "6.18-ro" ]; then
