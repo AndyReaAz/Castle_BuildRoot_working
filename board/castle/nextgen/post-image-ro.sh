@@ -164,7 +164,7 @@ rm -f "$BINARIES_DIR/sdcard.img"
 
 (
     cd "$BINARIES_DIR"
-    sha256sum         boot.bin u-boot.bin zImage nextgen.dtb uboot.env         rootfs.squashfs persist.ext4         > nextgen-image-manifest.sha256
+    sha256sum         boot.bin u-boot.bin zImage nextgen.dtb uboot.env         boot.vfat rootfs.squashfs persist.ext4         > nextgen-image-manifest.sha256
 )
 
 install -m 0755 "$SCRIPT_DIR/write-sd-card-ro.sh"     "$BINARIES_DIR/write-sd-card.sh"
