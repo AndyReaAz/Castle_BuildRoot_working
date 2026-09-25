@@ -4,7 +4,8 @@ set -eu
 PRODUCT_FILE="${NEXTGEN_PRODUCT_FILE:-/etc/nextgen-product}"
 ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
 READY="${NEXTGEN_PERSIST_READY:-/run/nextgen-persist-ready}"
-PLATFORM_ABI="$(cat /etc/nextgen-platform-abi 2>/dev/null || true)"
+PLATFORM_ABI_FILE="${NEXTGEN_PLATFORM_ABI_FILE:-/etc/nextgen-platform-abi}"
+PLATFORM_ABI="$(cat "$PLATFORM_ABI_FILE" 2>/dev/null || true)"
 
 [ -r "$PRODUCT_FILE" ] || { echo "NextGen launcher: missing product" >&2; exit 111; }
 PRODUCT="$(cat "$PRODUCT_FILE")"
