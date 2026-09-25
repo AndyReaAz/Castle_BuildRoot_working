@@ -60,10 +60,17 @@ prepare_host_keys()
     ed25519="$PERSIST_KEY_DIR/ssh_host_ed25519_key"
     rsa="$PERSIST_KEY_DIR/ssh_host_rsa_key"
 
-    if [ ! -s "$ed25519" ]; then
+    key_valid()
+    {
+        [ -s "$1" ] && "$KEYGEN" -y -f "$1" >/dev/null 2>&1
+    }
+
+    if ! key_valid "$ed25519"; then
+        rm -f "$ed25519" "$ed25519.pub"
         "$KEYGEN" -q -t ed25519 -N "" -f "$ed25519" || return 1
     fi
-    if [ ! -s "$rsa" ]; then
+    if ! key_valid "$rsa"; then
+        rm -f "$rsa" "$rsa.pub"
         "$KEYGEN" -q -t rsa -b 3072 -N "" -f "$rsa" || return 1
     fi
 
