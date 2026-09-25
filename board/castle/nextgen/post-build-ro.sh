@@ -39,7 +39,7 @@ cp -a "$OLD_APP/slotA" "$SLOT_SOURCE"
 # those copies from persist and put the authoritative set in the slot image.
 rm -rf "$PERSIST_SEED/data/$PRODUCT/Templates"
 mkdir -p "$PERSIST_SEED/data/$PRODUCT/Templates"
-if [ -d "$APP_DIR/Application/Files/SystemTemplates" ]; then
+if [ "$PRODUCT" = sound ] && [ -d "$APP_DIR/Application/Files/SystemTemplates" ]; then
     mkdir -p "$SLOT_SOURCE/Templates"
     cp -a "$APP_DIR/Application/Files/SystemTemplates/." "$SLOT_SOURCE/Templates/"
 fi
@@ -47,7 +47,7 @@ fi
 rm -rf "$ROOT/factory"
 mkdir -p "$FACTORY"
 cp -a "$OLD_APP/factory/." "$FACTORY/"
-if [ -d "$APP_DIR/Application/Files/SystemTemplates" ]; then
+if [ "$PRODUCT" = sound ] && [ -d "$APP_DIR/Application/Files/SystemTemplates" ]; then
     mkdir -p "$FACTORY/Templates"
     cp -a "$APP_DIR/Application/Files/SystemTemplates/." "$FACTORY/Templates/"
 fi
