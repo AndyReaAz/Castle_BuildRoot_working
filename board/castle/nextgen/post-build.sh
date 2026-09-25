@@ -149,7 +149,7 @@ fi
 # legacy directory; never copy executables/platform helpers into data/.
 LEGACY_EXEC="$TARGET_DIR/root/Exec"
 if [ -d "$LEGACY_EXEC" ]; then
-    for name in Settings0.json Settings1.json CalFile.dat FacCalFile.dat FTPQueue.dat; do
+    for name in Settings0.json Settings1.json CalFile.json FacCalFile.json FTPQueue.json; do
         [ ! -f "$LEGACY_EXEC/$name" ] ||
             install -m 0644 "$LEGACY_EXEC/$name" "$DATA_REALM/$name"
     done
@@ -462,8 +462,8 @@ if [ "$PRODUCT" = "sound" ]; then
         mkdir -p "$DATA_REALM/Templates"
         cp -aL "$COMMON_RUNTIME/Templates/." "$DATA_REALM/Templates/"
     fi
-    [ ! -f "$COMMON_RUNTIME/FacCalFile.dat" ] ||
-        install -m 0644 "$COMMON_RUNTIME/FacCalFile.dat" "$DATA_REALM/FacCalFile.dat"
+    [ ! -f "$COMMON_RUNTIME/FacCalFile.json" ] ||
+        install -m 0644 "$COMMON_RUNTIME/FacCalFile.json" "$DATA_REALM/FacCalFile.json"
 fi
 
 for slot in "$SLOT_A" "$FACTORY"; do
