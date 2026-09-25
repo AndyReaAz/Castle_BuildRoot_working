@@ -152,7 +152,7 @@ if [ "$PROFILE" = "6.18-ro" ]; then
         echo "error: RO-root kernel has no .config: $KERNEL_BUILD_DIR/.config" >&2
         exit 1
     }
-    for sym in BLK_DEV_LOOP SQUASHFS SQUASHFS_LZO; do
+    for sym in EXT4_FS BLK_DEV_LOOP SQUASHFS SQUASHFS_LZO; do
         grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
             echo "error: RO-root kernel requires CONFIG_${sym}=y" >&2
             echo "       rebuild linux-6.18 from chatgpt/ro-root-image-slots first" >&2
@@ -162,6 +162,19 @@ if [ "$PROFILE" = "6.18-ro" ]; then
     [ -f "$NEXTGEN_UBOOT_ENV_TEXT" ] || {
         echo "error: RO-root U-Boot environment is missing:" >&2
         echo "       $NEXTGEN_UBOOT_ENV_TEXT" >&2
+        exit 1
+    }
+    [ -z "${NEXTGEN_UBOOT_ENV:-}" ] || {
+        echo "error: RO-root profile refuses a prebuilt NEXTGEN_UBOOT_ENV override" >&2
+        echo "       the environment must be generated from the validated RO text source" >&2
+        exit 1
+    }
+    grep -q 'root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait' "$NEXTGEN_UBOOT_ENV_TEXT" || {
+        echo "error: RO-root U-Boot environment does not select read-only SquashFS p2" >&2
+        exit 1
+    }
+    grep -q 'nextgen.env=sd-ro' "$NEXTGEN_UBOOT_ENV_TEXT" || {
+        echo "error: RO-root U-Boot environment is missing nextgen.env=sd-ro" >&2
         exit 1
     }
 fi
@@ -217,14 +230,24 @@ build_product()
     fi
 
     if [ "$PROFILE" = "6.18-ro" ]; then
-        for artifact in rootfs.squashfs persist.ext4 sdcard.img; do
+        for artifact in boot.vfat uboot.env rootfs.squashfs persist.ext4 sdcard.img write-sd-card.sh nextgen-image-manifest.sha256; do
             [ -f "$out/images/$artifact" ] || {
                 echo "error: RO-root profile did not produce $out/images/$artifact" >&2
                 exit 1
             }
         done
+        [ "$(wc -c < "$out/images/uboot.env")" -eq $((0x4000)) ] || {
+            echo "error: RO-root uboot.env is not the expected 16 KiB image" >&2
+            exit 1
+        }
+        (cd "$out/images" && sha256sum -c nextgen-image-manifest.sha256 >/dev/null) || {
+            echo "error: RO-root image manifest verification failed" >&2
+            exit 1
+        }
         printf 'RO system image:        %s\n' "$out/images/rootfs.squashfs"
         printf 'Persistent image:       %s\n' "$out/images/persist.ext4"
+        printf 'Full SD image:          %s\n' "$out/images/sdcard.img"
+        printf 'U-Boot environment:     %s\n' "$out/images/uboot.env"
     fi
 
     printf 'Built product:          %s\n' "$product"
