@@ -327,12 +327,48 @@ cd ../Castle_BuildRoot_working
 ./build-nextgen-image.sh 6.18-flash sound
 ```
 
-The flash profile emits `nor.img`, `boot.ubi`, `rootfs.ubi` and
-`nextgen-flash-manifest.sha256`. The 2 MiB `nor.img` contains the
-AT91Bootstrap image, U-Boot, its exact-length trailer at `0x13fff0`, and the
-two redundant 16 KiB U-Boot environment payloads in the 64 KiB erase sectors at
-`0x140000` and `0x150000`.
+The flash profile emits:
 
-The UBI images are intended to be installed with UBI-aware tooling such as
-`ubiformat` rather than raw NAND writes, so factory bad blocks are handled
-when the image is installed.
+```text
+nor.img                    complete 2 MiB NOR image for an external programmer
+nor-at91bootstrap.bin      0x008000-byte labelled NOR partition image
+nor-uboot.bin              0x138000-byte labelled NOR partition image
+nor-uboot-env.bin          0x020000-byte redundant environment partition image
+boot.ubi                   small SPI-NAND boot UBI image
+rootfs.ubi                 SPI-NAND root filesystem UBI image
+program-nextgen-flash.sh   manual Linux/bring-up-SD programming helper
+nextgen-flash-manifest.sha256
+```
+
+The complete `nor.img` contains AT91Bootstrap, U-Boot, the exact-length
+trailer at `0x13fff0`, and both redundant 16 KiB environment payloads. The
+partition-sized NOR images contain the same bytes but are aligned to the DT
+labels `at91bootstrap`, `uboot` and `uboot-env`; this lets a bring-up SD
+program them by MTD label without assuming a `/dev/mtdN` number.
+
+Linux is required to expose 4 KiB SPI-NOR erase units for this programming
+path. The MX25V1635F supports 4 KiB subsectors, and the 4 KiB geometry is needed
+because the `0x8000` AT91Bootstrap/U-Boot boundary is not 64 KiB aligned.
+U-Boot itself may still erase a full 64 KiB block when updating an environment
+copy; each redundant copy deliberately owns its own 64 KiB region.
+
+The UBI images are installed with `ubiformat`, not raw NAND writes, so factory
+bad blocks are handled during installation. From the SD bring-up system, copy
+the complete flash artifact set into one directory and first run the
+non-destructive check:
+
+```sh
+./program-nextgen-flash.sh check
+```
+
+Only after the labels, geometry and SHA-256 manifest all validate, program with:
+
+```sh
+./program-nextgen-flash.sh program --confirm-nextgen-flash
+```
+
+The helper refuses the write unless it is running from the SD environment. It
+formats `rootfs` first, then the small boot UBI, writes the redundant NOR
+environment, installs the new AT91Bootstrap, and writes U-Boot last. Making
+U-Boot the final write leaves the old boot path untouched until every storage
+dependency needed by the new production U-Boot has been prepared.
