@@ -72,6 +72,22 @@ if [ ! -x "$TARGET_DIR/usr/sbin/fw_setenv" ] && [ ! -x "$TARGET_DIR/usr/bin/fw_s
 fi
 [ -r "$TARGET_DIR/etc/nextgen-storage-schema" ] ||
     fail "storage schema marker is missing"
+STORAGE_SCHEMA="$(cat "$TARGET_DIR/etc/nextgen-storage-schema")"
+case "$STORAGE_SCHEMA" in
+    legacy|ro-persist-v1)
+        ;;
+    flash-ubi-v1)
+        for tool in flashcp ubidetach ubiformat; do
+            if [ ! -x "$TARGET_DIR/usr/sbin/$tool" ] && \
+               [ ! -x "$TARGET_DIR/usr/bin/$tool" ]; then
+                fail "$tool is missing from flash-capable image"
+            fi
+        done
+        ;;
+    *)
+        fail "unknown storage schema $STORAGE_SCHEMA"
+        ;;
+esac
 
 grep -q 'nextgen.env=' "$BIN/fwenv.sh" ||
     fail "fwenv.sh does not select its backend from the kernel boot marker"
