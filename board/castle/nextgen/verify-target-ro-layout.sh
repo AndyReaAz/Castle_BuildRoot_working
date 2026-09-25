@@ -55,6 +55,19 @@ if [ "$PRODUCT" = sound ]; then
         fail "persistent live HPD seed missing"
     [ -r "$ROOT/factory/sound/BaseHPD/hpdc.csv" ] ||
         fail "factory fallback HPD missing"
+    [ -d "$SLOT_SOURCE/Templates" ] ||
+        fail "release template directory is missing from slot source"
+    [ -d "$ROOT/factory/sound/Templates" ] ||
+        fail "release template directory is missing from factory fallback"
+    [ -d "$PERSIST_SEED/data/sound/Templates" ] ||
+        fail "persistent user-template directory is missing"
+    [ -z "$(find "$PERSIST_SEED/data/sound/Templates" -mindepth 1 -maxdepth 1 -type f -name '*.tpl' -print -quit)" ] ||
+        fail "release templates leaked into persistent user-template storage"
+else
+    [ ! -e "$SLOT_SOURCE/Templates" ] ||
+        fail "sound release templates leaked into vibration slot source"
+    [ ! -e "$ROOT/factory/vibra/Templates" ] ||
+        fail "sound release templates leaked into vibration factory"
 fi
 
 [ -L "$TARGET_DIR/etc/localtime" ] &&
