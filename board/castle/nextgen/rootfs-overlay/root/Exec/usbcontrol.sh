@@ -7,9 +7,9 @@ USB_COMMON=/opt/nextgen/platform/bin/usb-gadget-common.sh
 LOG_DIR=/run/log
 
 PRODUCT="$(cat /etc/nextgen-product 2>/dev/null || echo sound)"
-DATA_ROOT="/opt/nextgen/data/$PRODUCT"
-SETTINGS0="$DATA_ROOT/SettingsJSON0.dat"
-SETTINGS1="$DATA_ROOT/SettingsJSON1.dat"
+DATA_ROOT="${NEXTGEN_DATA_ROOT:-/opt/nextgen/data/$PRODUCT}"
+SETTINGS0="${NEXTGEN_SETTINGS0:-$DATA_ROOT/SettingsJSON0.dat}"
+SETTINGS1="${NEXTGEN_SETTINGS1:-$DATA_ROOT/SettingsJSON1.dat}"
 
 MTP_PID=/run/umtprd.pid
 MTP_LOG="$LOG_DIR/umtprd.log"
@@ -200,7 +200,7 @@ select_settings_file()
     printf '%s\n' "$best_file"
 }
 
-write_gadget_identity()
+read_gadget_identity()
 {
     settings_file="$(select_settings_file 2>/dev/null || true)"
 
@@ -213,6 +213,11 @@ write_gadget_identity()
         MANUFACTURER=0
         MODELTYPE=0
     fi
+}
+
+write_gadget_identity()
+{
+    read_gadget_identity
 
     printf "%06d\n" "$SERIALNUMBER" > "$GADGET/strings/0x409/serialnumber"
 
@@ -735,6 +740,7 @@ usage()
 {
     echo "Usage:"
     echo "  $0 status"
+    echo "  $0 identity"
     echo "  $0 mask 0..7"
     echo "  $0 mode none|cdc|ncm|mtp|cdc+ncm|cdc+mtp|ncm+mtp|all"
     echo ""
@@ -747,6 +753,13 @@ usage()
 case "$1" in
     status)
         status
+        ;;
+
+    identity)
+        read_gadget_identity
+        echo "SerialNumber=$SERIALNUMBER"
+        echo "Manufacturer=$MANUFACTURER"
+        echo "ModelType=$MODELTYPE"
         ;;
 
     mask)
