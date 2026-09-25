@@ -1,0 +1,159 @@
+#!/bin/sh
+
+DAEMON_NAME=sshd
+DAEMON="${NEXTGEN_SSHD_DAEMON:-/usr/sbin/sshd}"
+KEYGEN="${NEXTGEN_SSH_KEYGEN:-/usr/bin/ssh-keygen}"
+START_STOP_DAEMON="${NEXTGEN_START_STOP_DAEMON:-start-stop-daemon}"
+PIDFILE="${NEXTGEN_SSH_PIDFILE:-/var/run/$DAEMON_NAME.pid}"
+RUNTIME_DIR="${NEXTGEN_SSH_RUNTIME_DIR:-/run}"
+START_LOCK="$RUNTIME_DIR/nextgen-sshd-start.lock"
+STOP_MARK="$RUNTIME_DIR/nextgen-sshd-stop.pending"
+
+mkdir -p "$RUNTIME_DIR" || exit 1
+umask 077
+
+release_start_lock()
+{
+    rm -rf "$START_LOCK"
+}
+
+acquire_start_lock()
+{
+    if mkdir "$START_LOCK" 2>/dev/null; then
+        echo "$$" > "$START_LOCK/pid"
+        return 0
+    fi
+
+    owner="$(cat "$START_LOCK/pid" 2>/dev/null || true)"
+    case "$owner" in
+        ''|*[!0-9]*) ;;
+        *)
+            if kill -0 "$owner" 2>/dev/null; then
+                return 1
+            fi
+            ;;
+    esac
+
+    rm -rf "$START_LOCK"
+    if mkdir "$START_LOCK" 2>/dev/null; then
+        echo "$$" > "$START_LOCK/pid"
+        return 0
+    fi
+
+    return 1
+}
+
+start()
+{
+    [ -x "$KEYGEN" ] || {
+        echo "SSH key generator missing: $KEYGEN"
+        return 1
+    }
+    [ -x "$DAEMON" ] || {
+        echo "SSH daemon missing: $DAEMON"
+        return 1
+    }
+
+    if ! acquire_start_lock; then
+        echo "SSH start already in progress"
+        return 0
+    fi
+
+    trap 'release_start_lock' EXIT HUP INT TERM
+    rm -f "$STOP_MARK"
+
+    echo "Ensuring SSH host keys"
+    "$KEYGEN" -A || {
+        echo "SSH host key generation failed"
+        release_start_lock
+        trap - EXIT HUP INT TERM
+        return 1
+    }
+
+    if [ -e "$STOP_MARK" ]; then
+        echo "SSH start cancelled"
+        release_start_lock
+        trap - EXIT HUP INT TERM
+        return 0
+    fi
+
+    printf "Starting %s: " "$DAEMON_NAME"
+    "$START_STOP_DAEMON" --start --pidfile "$PIDFILE" --exec "$DAEMON"
+    status=$?
+
+    if [ "$status" -eq 0 ]; then
+        echo "OK"
+    else
+        echo "FAIL"
+    fi
+
+    release_start_lock
+    trap - EXIT HUP INT TERM
+    return "$status"
+}
+
+stop()
+{
+    touch "$STOP_MARK"
+
+    printf "Stopping %s: " "$DAEMON_NAME"
+    "$START_STOP_DAEMON" --stop --pidfile "$PIDFILE" --exec "$DAEMON" >/dev/null 2>&1 || true
+    echo "OK"
+
+    count=0
+    while [ -f "$PIDFILE" ] && [ "$count" -lt 50 ]; do
+        sleep 0.1
+        count=$((count + 1))
+    done
+
+    return 0
+}
+
+restart()
+{
+    stop
+
+    count=0
+    while [ -d "$START_LOCK" ] && [ "$count" -lt 300 ]; do
+        sleep 0.1
+        count=$((count + 1))
+    done
+
+    start
+}
+
+reload()
+{
+    printf "Reloading %s config: " "$DAEMON_NAME"
+    "$START_STOP_DAEMON" --stop --signal HUP -q --pidfile "$PIDFILE" --exec "$DAEMON"
+    status=$?
+
+    if [ "$status" -eq 0 ]; then
+        echo "OK"
+    else
+        echo "FAIL"
+    fi
+
+    return "$status"
+}
+
+case "${1:-}" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    reload)
+        reload
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|reload}"
+        exit 1
+        ;;
+esac
+
+exit $?
