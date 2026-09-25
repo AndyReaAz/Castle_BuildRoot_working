@@ -1,0 +1,163 @@
+#!/bin/sh
+set -eu
+
+[ "$#" -eq 1 ] || exit 2
+PRODUCT="$1"
+case "$PRODUCT" in sound|vibra) ;; *) exit 2 ;; esac
+
+ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
+SDCARD_ROOT="${NEXTGEN_SDCARD_ROOT:-/sdcard}"
+MOUNTS_FILE="${NEXTGEN_MOUNTS_FILE:-/proc/mounts}"
+PLATFORM_ABI="$(cat /etc/nextgen-platform-abi 2>/dev/null || true)"
+case "$PLATFORM_ABI" in ''|*[!0-9]*) exit 1 ;; esac
+
+APP_ROOT="$ROOT/app/$PRODUCT"
+FACTORY_ROOT="$ROOT/factory/$PRODUCT"
+STATE_ROOT="$ROOT/state/$PRODUCT"
+ACTIVE_MOUNT="$APP_ROOT/active"
+PENDING="$STATE_ROOT/pending"
+BOOTING="$STATE_ROOT/booting"
+ACCEPTED="$STATE_ROOT/accepted"
+PREVIOUS="$STATE_ROOT/previous"
+ROLLBACK="$STATE_ROOT/rollback"
+CLEANUP="$STATE_ROOT/cleanup"
+RUN_REF="/run/nextgen-app-ref"
+
+. "$ROOT/platform/bin/nextgen-slot-common.sh"
+
+sdcard_mounted()
+{
+    awk -v mountpoint="$SDCARD_ROOT" '
+        $2 == mountpoint { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$MOUNTS_FILE" 2>/dev/null
+}
+
+cleanup_download()
+{
+    outcome="$1"
+
+    [ -f "$CLEANUP" ] || {
+        [ "$outcome" != rollback ] || rm -f "$ROLLBACK"
+        return 0
+    }
+
+    cleanup_version=
+    package=
+    extra=
+    IFS=' ' read -r cleanup_version package extra < "$CLEANUP" || return 1
+    case "$cleanup_version" in ''|*[!0-9]*) return 1 ;; esac
+    [ -n "$package" ] && [ -z "$extra" ] || return 1
+
+    package_dir="${package%/*}"
+    package_name="${package##*/}"
+    case "$package_dir" in
+        "$SDCARD_ROOT/public"|"$SDCARD_ROOT/temp/TempFirmware") ;;
+        *) return 1 ;;
+    esac
+    case "$package_name" in
+        ''|*[!A-Za-z0-9_.-]*|*.part) return 1 ;;
+    esac
+
+    sdcard_mounted || return 1
+
+    if [ "$outcome" = accepted ]; then
+        rm -f "$package" || return 1
+        if [ "$package_dir" = "$SDCARD_ROOT/temp/TempFirmware" ]; then
+            rm -f "$package_dir/.status" "$package_dir/.status.nextgen.tmp" ||
+                return 1
+        fi
+    else
+        if [ "$package_dir" = "$SDCARD_ROOT/temp/TempFirmware" ]; then
+            status="$package_dir/.status"
+            if [ -f "$package" ]; then
+                printf 'ready:%s\n' "$cleanup_version" > "$package_dir/.status.nextgen.tmp" ||
+                    return 1
+                sync
+                mv -f "$package_dir/.status.nextgen.tmp" "$status" || return 1
+            else
+                rm -f "$status" "$package_dir/.status.nextgen.tmp" || return 1
+            fi
+        fi
+        # USB packages are deliberately retained after rollback.
+    fi
+
+    sync
+    rm -f "$CLEANUP"
+    [ "$outcome" != rollback ] || rm -f "$ROLLBACK"
+    sync
+    return 0
+}
+
+# Reconcile a rollback decision made before /sdcard was mounted.
+if [ -f "$ROLLBACK" ]; then
+    cleanup_download rollback || true
+    rm -f "$BOOTING"
+    exit 0
+fi
+
+# A power cut can leave only the durable cleanup record after acceptance or
+# before pending publication. Reconcile it without changing accepted state.
+if [ ! -f "$PENDING" ]; then
+    rm -f "$BOOTING"
+    if [ -f "$CLEANUP" ]; then
+        cleanup_version=
+        cleanup_package=
+        cleanup_extra=
+        IFS=' ' read -r cleanup_version cleanup_package cleanup_extra < "$CLEANUP" || true
+        running="$(cat "$RUN_REF" 2>/dev/null || true)"
+        accepted_line="$(cat "$ACCEPTED" 2>/dev/null || true)"
+        if [ -n "$cleanup_version" ] &&
+           [ "$accepted_line" = "$running" ] &&
+           [ "${running#* }" = "$cleanup_version" ]; then
+            cleanup_download accepted || true
+        else
+            cleanup_download rollback || true
+        fi
+    fi
+    exit 0
+fi
+
+new=
+old=
+version=
+extra=
+IFS=' ' read -r new old version extra < "$PENDING" || exit 1
+case "$new" in slotA|slotB) ;; *) exit 1 ;; esac
+nextgen_valid_ref "$old" || exit 1
+case "$version" in ''|*[!0-9]*) exit 1 ;; esac
+[ -z "$extra" ] || exit 1
+
+[ "$(cat "$BOOTING" 2>/dev/null || true)" = "$new" ] || exit 1
+[ "$(cat "$RUN_REF" 2>/dev/null || true)" = "$new $version" ] || exit 1
+[ "$(nextgen_slot_version "$new" 2>/dev/null || true)" = "$version" ] || exit 1
+nextgen_slot_valid "$new" || exit 1
+
+accepted_old=
+accepted_old_version=
+accepted_extra=
+IFS=' ' read -r accepted_old accepted_old_version accepted_extra < "$ACCEPTED" ||
+    exit 1
+[ "$accepted_old" = "$old" ] || exit 1
+case "$accepted_old_version" in ''|*[!0-9]*) exit 1 ;; esac
+[ -z "$accepted_extra" ] || exit 1
+
+# Preserve the former known-good reference before moving accepted. If power
+# fails here, accepted still names OLD and the launcher safely retries rollback.
+printf '%s %s\n' "$accepted_old" "$accepted_old_version" > "$STATE_ROOT/.previous.tmp"
+sync
+mv -f "$STATE_ROOT/.previous.tmp" "$PREVIOUS"
+sync
+
+# This is the sole authoritative acceptance point.
+printf '%s %s\n' "$new" "$version" > "$STATE_ROOT/.accepted.tmp"
+sync
+mv -f "$STATE_ROOT/.accepted.tmp" "$ACCEPTED"
+sync
+
+rm -f "$PENDING" "$BOOTING" "$ROLLBACK"
+sync
+
+cleanup_download accepted || true
+
+echo "NextGen update: accepted $PRODUCT $new version $version"
