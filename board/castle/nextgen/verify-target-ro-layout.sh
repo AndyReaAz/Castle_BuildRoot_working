@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-[ "$#" -eq 4 ] || {
-    echo "Usage: $0 <target-dir> <persist-seed> <slot-source> <sound|vibra>" >&2
+[ "$#" -eq 5 ] || {
+    echo "Usage: $0 <target-dir> <persist-seed> <slot-source> <sound|vibra> <sd-ext4|nand-ubi>" >&2
     exit 2
 }
 
@@ -10,6 +10,7 @@ TARGET_DIR="$1"
 PERSIST_SEED="$2"
 SLOT_SOURCE="$3"
 PRODUCT="$4"
+BACKEND="$5"
 ROOT="$TARGET_DIR/opt/nextgen"
 
 fail()
@@ -20,6 +21,8 @@ fail()
 
 [ "$(cat "$TARGET_DIR/etc/nextgen-storage-schema" 2>/dev/null || true)" = ro-persist-v1 ] ||
     fail "storage schema marker missing"
+[ "$(cat "$TARGET_DIR/etc/nextgen-storage-backend" 2>/dev/null || true)" = "$BACKEND" ] ||
+    fail "storage backend marker mismatch"
 [ "$(cat "$TARGET_DIR/etc/nextgen-platform-abi" 2>/dev/null || true)" = 1 ] ||
     fail "platform ABI marker missing"
 
@@ -117,8 +120,23 @@ fi
 [ "$(readlink "$TARGET_DIR/etc/umtprd/umtprd.conf")" = /run/umtprd/umtprd.conf ] ||
     fail "uMTPrd configuration is not runtime-backed"
 
-grep -q '^/dev/root[[:space:]]\+/[[:space:]]\+squashfs[[:space:]]\+ro'     "$TARGET_DIR/etc/fstab" || fail "root is not declared read-only SquashFS"
-grep -q '^/dev/mmcblk0p3[[:space:]]\+/persist[[:space:]]\+ext4'     "$TARGET_DIR/etc/fstab" || fail "SD persist partition is missing"
+grep -q '^/dev/root[[:space:]]\+/[[:space:]]\+squashfs[[:space:]]\+ro' "$TARGET_DIR/etc/fstab" ||
+    fail "root is not declared read-only SquashFS"
+case "$BACKEND" in
+    sd-ext4)
+        grep -q '^/dev/mmcblk0p3[[:space:]]\+/persist[[:space:]]\+ext4' "$TARGET_DIR/etc/fstab" ||
+            fail "SD persist partition is missing"
+        [ ! -e "$TARGET_DIR/etc/nextgen-sd-data-only" ] ||
+            fail "SD-root image incorrectly declares SD data-only mode"
+        ;;
+    nand-ubi)
+        grep -q '^ubi0:persist[[:space:]]\+/persist[[:space:]]\+ubifs' "$TARGET_DIR/etc/fstab" ||
+            fail "NAND persist UBI volume is missing"
+        [ -f "$TARGET_DIR/etc/nextgen-sd-data-only" ] ||
+            fail "flash-root image does not declare SD data-only mode"
+        ;;
+    *) fail "unknown storage backend $BACKEND" ;;
+esac
 ! grep -q '^[^#].*[[:space:]]/sdcard[[:space:]]' "$TARGET_DIR/etc/fstab" ||
     fail "/sdcard must remain Application-mounted for fsck/identity recovery"
 grep -q '/opt/nextgen/platform/bin/persist-init.sh' "$TARGET_DIR/etc/inittab" ||
@@ -129,7 +147,16 @@ grep -q '/opt/nextgen/platform/bin/persist-init.sh' "$TARGET_DIR/etc/inittab" ||
 for helper in persist-init.sh nextgen-slot-common.sh nextgen-update-install nextgen-update-accept; do
     [ -x "$ROOT/platform/bin/$helper" ] || fail "platform helper $helper missing"
 done
-[ -x "$TARGET_DIR/sbin/e2fsck" ] || fail "target e2fsck missing for persist/SD recovery"
+case "$BACKEND" in
+    sd-ext4)
+        [ -x "$TARGET_DIR/sbin/e2fsck" ] ||
+            fail "target e2fsck missing for ext4 persist recovery"
+        ;;
+    nand-ubi)
+        [ -x "$TARGET_DIR/usr/sbin/fsck.ubifs" ] || [ -x "$TARGET_DIR/sbin/fsck.ubifs" ] ||
+            fail "target fsck.ubifs missing for NAND persist recovery"
+        ;;
+esac
 
 [ ! -e "$ROOT/app/$PRODUCT/slotA" ] ||
     fail "directory slot leaked into immutable root"
@@ -138,4 +165,4 @@ done
 [ ! -e "$ROOT/data/$PRODUCT/SettingsJSON0.dat" ] ||
     fail "obsolete settings format leaked into immutable root"
 
-echo "NextGen RO target layout OK: product=$PRODUCT"
+echo "NextGen RO target layout OK: product=$PRODUCT backend=$BACKEND"
