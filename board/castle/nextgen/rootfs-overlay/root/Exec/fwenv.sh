@@ -60,15 +60,21 @@ find_flash_env_mtd()
         [ "$NAME" = '"uboot-env"' ] || continue
 
         # The ratified NOR map gives this partition exactly two 64 KiB
-        # erase sectors. Refuse a same-named device with different geometry.
-        [ "$SIZE" = "00020000" ] ||
-            die "uboot-env MTD partition has unexpected size 0x$SIZE"
-        [ "$ERASE" = "00010000" ] ||
-            die "uboot-env MTD partition has unexpected erase size 0x$ERASE"
+        # erase sectors. A geometry mismatch is a hard refusal, not "missing".
+        if [ "$SIZE" != "00020000" ]; then
+            echo "fwenv: uboot-env MTD partition has unexpected size 0x$SIZE" >&2
+            return 2
+        fi
+        if [ "$ERASE" != "00010000" ]; then
+            echo "fwenv: uboot-env MTD partition has unexpected erase size 0x$ERASE" >&2
+            return 2
+        fi
 
         DEV="${DEV%:}"
-        [ -c "/dev/$DEV" ] ||
-            die "MTD partition $DEV exists in /proc/mtd but /dev/$DEV is missing"
+        if [ ! -c "/dev/$DEV" ]; then
+            echo "fwenv: MTD partition $DEV exists in /proc/mtd but /dev/$DEV is missing" >&2
+            return 2
+        fi
 
         printf '%s\n' "/dev/$DEV"
         return 0
@@ -79,19 +85,27 @@ find_flash_env_mtd()
 
 prepare_flash_config()
 {
-    MTD_DEV="$(find_flash_env_mtd 2>/dev/null || true)"
+    MTD_DEV="$(find_flash_env_mtd)"
+    MTD_STATUS=$?
 
-    if [ -z "$MTD_DEV" ]; then
-        # The production kernel may intentionally leave SPI-NOR as an
-        # on-demand module. A blacklist only blocks automatic loading;
-        # explicit modprobe here preserves fast boot and enables env access.
-        if command -v modprobe >/dev/null 2>&1; then
-            modprobe spi-nor >/dev/null 2>&1 || true
-        fi
-        MTD_DEV="$(find_flash_env_mtd 2>/dev/null || true)"
-    fi
+    case "$MTD_STATUS" in
+        0) ;;
+        1)
+            # The production kernel may intentionally leave SPI-NOR as an
+            # on-demand module. A blacklist only blocks automatic loading;
+            # explicit modprobe here preserves fast boot and enables env access.
+            if command -v modprobe >/dev/null 2>&1; then
+                modprobe spi-nor >/dev/null 2>&1 || true
+            fi
+            MTD_DEV="$(find_flash_env_mtd)"
+            MTD_STATUS=$?
+            ;;
+        *)
+            die "refusing invalid uboot-env MTD geometry"
+            ;;
+    esac
 
-    [ -n "$MTD_DEV" ] ||
+    [ "$MTD_STATUS" -eq 0 ] && [ -n "$MTD_DEV" ] ||
         die "cannot find validated MTD partition labelled uboot-env"
 
     mkdir -p /run || die "cannot create /run for flash environment config"
