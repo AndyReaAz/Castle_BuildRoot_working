@@ -347,6 +347,21 @@ test_cleanup_waits_for_sd()
     pass "accepted cleanup waits for mounted SD"
 }
 
+test_rollback_cleanup_waits_for_sd()
+{
+    c="$TMP/rollback-nosd"; setup_known_good "$c"
+    p="$c/sdcard/public/update_V111.zip"; printf x > "$p"
+    printf '111 %s\n' "$p" > "$c/root/state/sound/cleanup"; printf 'rollback\n' > "$c/root/state/sound/rollback"
+    run_acceptor "$c" >/dev/null
+    assert_exists "$c/root/state/sound/rollback" "rollback retained without SD"
+    assert_exists "$c/root/state/sound/cleanup" "rollback cleanup retained without SD"
+    mount_sd "$c"; run_acceptor "$c" >/dev/null
+    assert_exists "$p" "rolled-back USB package retained"
+    assert_not_exists "$c/root/state/sound/rollback" "rollback cleared when SD returns"
+    assert_not_exists "$c/root/state/sound/cleanup" "rollback cleanup cleared when SD returns"
+    pass "rollback reconciliation waits for mounted SD"
+}
+
 test_cloud_rollback_requeue()
 {
     c="$TMP/cloud"; setup_known_good "$c"; mount_sd "$c"
@@ -371,6 +386,7 @@ for t in \
     test_manifest_image_disagreement_rejected \
     test_equal_version_rejected \
     test_cleanup_waits_for_sd \
+    test_rollback_cleanup_waits_for_sd \
     test_cloud_rollback_requeue
 do
     "$t"
