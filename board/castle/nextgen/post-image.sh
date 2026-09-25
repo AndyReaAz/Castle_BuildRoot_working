@@ -177,6 +177,15 @@ if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
         echo "error: flash profile requires Buildroot rootfs.ubi" >&2
         exit 1
     }
+    [ "$(wc -c < "$BINARIES_DIR/boot.bin" | tr -d '[:space:]')" -le $((0x8000)) ] || {
+        echo "error: AT91Bootstrap exceeds its 32 KiB NOR partition" >&2
+        exit 1
+    }
+    ROOTFS_UBI_BYTES="$(wc -c < "$BINARIES_DIR/rootfs.ubi" | tr -d '[:space:]')"
+    [ "$ROOTFS_UBI_BYTES" -le $((0x08000000)) ] || {
+        echo "error: rootfs.ubi exceeds 128 MiB NAND rootfs partition: $ROOTFS_UBI_BYTES" >&2
+        exit 1
+    }
 
     DTB_BYTES="$(wc -c < "$BINARIES_DIR/nextgen.dtb" | tr -d '[:space:]')"
     KERNEL_BYTES="$(wc -c < "$BINARIES_DIR/zImage" | tr -d '[:space:]')"
