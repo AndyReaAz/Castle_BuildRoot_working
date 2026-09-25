@@ -6,6 +6,9 @@ BUILDROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)"
 WORKSPACE_DIR="$(CDPATH= cd -- "$BUILDROOT_DIR/.." && pwd)"
 KERNEL_BUILD_DIR="${NEXTGEN_KERNEL_BUILD_DIR:-$WORKSPACE_DIR/linux-working/build-fast}"
 
+STORAGE_SCHEMA="${NEXTGEN_STORAGE_SCHEMA:-legacy}"
+STORAGE_BACKEND="${NEXTGEN_STORAGE_BACKEND:-legacy}"
+
 : "${BINARIES_DIR:?Buildroot did not provide BINARIES_DIR}"
 : "${HOST_DIR:?Buildroot did not provide HOST_DIR}"
 
@@ -58,32 +61,31 @@ stage_required "$BINARIES_DIR/nextgen.dtb" \
     "$KERNEL_BUILD_DIR/arch/arm/boot/dts/microchip/nextgen.dtb" \
     "$KERNEL_BUILD_DIR/arch/arm/boot/dts/nextgen.dtb"
 
-# The same U-Boot binary is later destined for the ratified 0x138000-byte
-# NOR partition. Refuse to package a build that would overlap the environment.
-# (The SD AT91Bootstrap binary is a different profile; its 32 KiB NOR bound is
-# checked by the AT91Bootstrap NOR build itself.)
-UBOOT_BYTES="$(wc -c < "$BINARIES_DIR/u-boot.bin")"
-if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
-    UBOOT_MAX=$((0x137ff0))
+# U-Boot must fit the ratified NOR partition. Production also preserves the
+# old bootstrap's fixed 640 KiB load window until the new trailer-aware
+# bootstrap is written last by the provisioner.
+UBOOT_BYTES="$(wc -c < "$BINARIES_DIR/u-boot.bin" | tr -d '[:space:]')"
+if [ "$STORAGE_BACKEND" = nand-ubi ]; then
+    UBOOT_MAX=$((0x0a0000))
 else
     UBOOT_MAX=$((0x138000))
 fi
 [ "$UBOOT_BYTES" -le "$UBOOT_MAX" ] || {
-    echo "error: u-boot.bin is too large for NOR U-Boot payload: $UBOOT_BYTES > $UBOOT_MAX" >&2
+    echo "error: u-boot.bin is too large for selected boot path: $UBOOT_BYTES > $UBOOT_MAX" >&2
     exit 1
 }
 
-if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
+rm -f "$BINARIES_DIR/u-boot.nor-trailer"
+if [ "$STORAGE_BACKEND" = nand-ubi ]; then
     TRAILER_SOURCE="${NEXTGEN_UBOOT_TRAILER:-$WORKSPACE_DIR/u-boot/build-flash/u-boot.nor-trailer}"
     [ -f "$TRAILER_SOURCE" ] || {
-        echo "error: flash profile U-Boot length trailer is missing: $TRAILER_SOURCE" >&2
+        echo "error: production U-Boot length trailer is missing: $TRAILER_SOURCE" >&2
         exit 1
     }
     [ "$(wc -c < "$TRAILER_SOURCE" | tr -d '[:space:]')" -eq 16 ] || {
-        echo "error: U-Boot length trailer is not 16 bytes: $TRAILER_SOURCE" >&2
+        echo "error: U-Boot length trailer is not 16 bytes" >&2
         exit 1
     }
-
     set -- $(od -An -tu1 -N16 "$TRAILER_SOURCE")
     [ "$1" -eq 78 ] && [ "$2" -eq 71 ] && [ "$3" -eq 85 ] && [ "$4" -eq 66 ] || {
         echo "error: U-Boot length trailer has invalid NGUB magic" >&2
@@ -92,19 +94,12 @@ if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
     TRAILER_LEN=$(( $5 | ($6 << 8) | ($7 << 16) | ($8 << 24) ))
     TRAILER_INV=$(( $9 | (${10} << 8) | (${11} << 16) | (${12} << 24) ))
     TRAILER_VER=$(( ${13} | (${14} << 8) | (${15} << 16) | (${16} << 24) ))
-    [ "$TRAILER_LEN" -eq "$UBOOT_BYTES" ] || {
-        echo "error: U-Boot trailer length $TRAILER_LEN does not match u-boot.bin $UBOOT_BYTES" >&2
-        exit 1
-    }
-    [ $(( (TRAILER_LEN ^ TRAILER_INV) & 0xffffffff )) -eq $((0xffffffff)) ] || {
-        echo "error: U-Boot trailer length complement is invalid" >&2
-        exit 1
-    }
+    [ "$TRAILER_LEN" -eq "$UBOOT_BYTES" ] &&
+    [ $(( (TRAILER_LEN ^ TRAILER_INV) & 0xffffffff )) -eq $((0xffffffff)) ] &&
     [ "$TRAILER_VER" -eq 1 ] || {
-        echo "error: unsupported U-Boot trailer version $TRAILER_VER" >&2
+        echo "error: U-Boot length trailer does not match u-boot.bin" >&2
         exit 1
     }
-
     install -m 0644 "$TRAILER_SOURCE" "$BINARIES_DIR/u-boot.nor-trailer"
 fi
 
@@ -112,7 +107,7 @@ UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
 UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
 MKENVIMAGE="${NEXTGEN_MKENVIMAGE:-$WORKSPACE_DIR/u-boot/build-fast/tools/mkenvimage}"
 
-if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "ro-persist-v1" ]; then
+if [ "$STORAGE_SCHEMA" = ro-persist-v1 ]; then
     [ -z "$UBOOT_ENV_SOURCE" ] || {
         echo "error: RO-root image refuses a prebuilt NEXTGEN_UBOOT_ENV override" >&2
         exit 1
@@ -121,21 +116,31 @@ if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "ro-persist-v1" ]; then
         echo "error: RO-root U-Boot environment source is missing: $UBOOT_ENV_TEXT" >&2
         exit 1
     }
-    grep -q 'root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait' "$UBOOT_ENV_TEXT" || {
-        echo "error: RO-root U-Boot environment does not select read-only SquashFS p2" >&2
-        exit 1
-    }
-    grep -q 'nextgen.env=sd-ro' "$UBOOT_ENV_TEXT" || {
-        echo "error: RO-root U-Boot environment is missing nextgen.env=sd-ro" >&2
-        exit 1
-    }
+    case "$STORAGE_BACKEND" in
+        sd-ext4)
+            grep -q 'root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait' "$UBOOT_ENV_TEXT" &&
+            grep -q 'nextgen.env=sd-ro' "$UBOOT_ENV_TEXT" || {
+                echo "error: SD RO-root environment is inconsistent" >&2
+                exit 1
+            }
+            ;;
+        nand-ubi)
+            grep -q 'ubi.mtd=rootfs' "$UBOOT_ENV_TEXT" &&
+            grep -q 'ubi.block=0,system' "$UBOOT_ENV_TEXT" &&
+            grep -q 'root=/dev/ubiblock0_0 rootfstype=squashfs ro rootwait' "$UBOOT_ENV_TEXT" &&
+            grep -q 'nextgen.env=flash' "$UBOOT_ENV_TEXT" &&
+            grep -q 'ubi part boot' "$UBOOT_ENV_TEXT" &&
+            grep -q 'ubi read ${loadaddr} device-tree' "$UBOOT_ENV_TEXT" &&
+            grep -q 'ubi read ${krnladdr} kernel' "$UBOOT_ENV_TEXT" || {
+                echo "error: NAND RO-root environment is inconsistent" >&2
+                exit 1
+            }
+            ;;
+        *) echo "error: invalid RO-root backend $STORAGE_BACKEND" >&2; exit 1 ;;
+    esac
 fi
 
 rm -f "$BINARIES_DIR/uboot.env"
-if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ] && [ -n "$UBOOT_ENV_SOURCE" ]; then
-    echo "error: flash profile refuses a prebuilt environment; it must be generated in redundant format" >&2
-    exit 1
-fi
 if [ -n "$UBOOT_ENV_SOURCE" ]; then
     [ -f "$UBOOT_ENV_SOURCE" ] || {
         echo "error: NEXTGEN_UBOOT_ENV does not exist: $UBOOT_ENV_SOURCE" >&2
@@ -167,18 +172,6 @@ else
         { echo "error: U-Boot environment has no modeltype identity" >&2; exit 1; }
     grep -q '^model=' "$UBOOT_ENV_TEXT" ||
         { echo "error: U-Boot environment has no model identity" >&2; exit 1; }
-    if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
-        grep -q 'nextgen.env=flash' "$UBOOT_ENV_TEXT" ||
-            { echo "error: flash U-Boot environment is missing nextgen.env=flash" >&2; exit 1; }
-        grep -q 'ubi part boot' "$UBOOT_ENV_TEXT" ||
-            { echo "error: flash U-Boot environment does not attach the boot UBI partition" >&2; exit 1; }
-        grep -q 'ubi read ${loadaddr} device-tree' "$UBOOT_ENV_TEXT" ||
-            { echo "error: flash U-Boot environment does not load the device-tree static volume" >&2; exit 1; }
-        grep -q 'ubi read ${krnladdr} kernel' "$UBOOT_ENV_TEXT" ||
-            { echo "error: flash U-Boot environment does not load the kernel static volume" >&2; exit 1; }
-        grep -q ' && ubi part boot && ' "$UBOOT_ENV_TEXT" ||
-            { echo "error: flash U-Boot environment is not fail-closed" >&2; exit 1; }
-    fi
     grep -q 'nextgen.manufacturer=${manufacturer}' "$UBOOT_ENV_TEXT" ||
         { echo "error: bootargs do not pass manufacturer identity" >&2; exit 1; }
     grep -q 'nextgen.modeltype=${modeltype}' "$UBOOT_ENV_TEXT" ||
@@ -194,7 +187,7 @@ else
         echo "       rebuild U-Boot fast profile or set NEXTGEN_MKENVIMAGE" >&2
         exit 1
     }
-    if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
+    if [ "$STORAGE_BACKEND" = nand-ubi ]; then
         "$MKENVIMAGE" -r -s 0x4000 -o "$BINARIES_DIR/uboot.env" "$UBOOT_ENV_TEXT"
     else
         "$MKENVIMAGE" -s 0x4000 -o "$BINARIES_DIR/uboot.env" "$UBOOT_ENV_TEXT"
@@ -202,124 +195,8 @@ else
     printf 'NextGen boot: %-12s <- %s\n' "uboot.env" "$UBOOT_ENV_TEXT"
 fi
 
-if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
-    [ -x "$HOST_DIR/sbin/ubinize" ] || {
-        echo "error: Buildroot host ubinize is unavailable: $HOST_DIR/sbin/ubinize" >&2
-        exit 1
-    }
-    [ -f "$BINARIES_DIR/rootfs.ubi" ] || {
-        echo "error: flash profile requires Buildroot rootfs.ubi" >&2
-        exit 1
-    }
-    [ "$(wc -c < "$BINARIES_DIR/boot.bin" | tr -d '[:space:]')" -le $((0x8000)) ] || {
-        echo "error: AT91Bootstrap exceeds its 32 KiB NOR partition" >&2
-        exit 1
-    }
-    ROOTFS_UBI_BYTES="$(wc -c < "$BINARIES_DIR/rootfs.ubi" | tr -d '[:space:]')"
-    [ "$ROOTFS_UBI_BYTES" -le $((0x08000000)) ] || {
-        echo "error: rootfs.ubi exceeds 128 MiB NAND rootfs partition: $ROOTFS_UBI_BYTES" >&2
-        exit 1
-    }
-
-    DTB_BYTES="$(wc -c < "$BINARIES_DIR/nextgen.dtb" | tr -d '[:space:]')"
-    KERNEL_BYTES="$(wc -c < "$BINARIES_DIR/zImage" | tr -d '[:space:]')"
-    [ "$DTB_BYTES" -gt 0 ] || { echo "error: empty nextgen.dtb" >&2; exit 1; }
-    [ "$KERNEL_BYTES" -gt 0 ] || { echo "error: empty zImage" >&2; exit 1; }
-
-    UBI_CFG="$BINARIES_DIR/boot-ubinize.cfg"
-    cat > "$UBI_CFG" <<EOF
-[device-tree]
-mode=ubi
-vol_id=0
-vol_type=static
-vol_name=device-tree
-vol_alignment=1
-vol_size=$DTB_BYTES
-image=$BINARIES_DIR/nextgen.dtb
-
-[kernel]
-mode=ubi
-vol_id=1
-vol_type=static
-vol_name=kernel
-vol_alignment=1
-vol_size=$KERNEL_BYTES
-image=$BINARIES_DIR/zImage
-EOF
-
-    rm -f "$BINARIES_DIR/boot.ubi"
-    "$HOST_DIR/sbin/ubinize" -m 0x800 -p 0x20000 \
-        -o "$BINARIES_DIR/boot.ubi" "$UBI_CFG"
-    rm -f "$UBI_CFG"
-
-    BOOT_UBI_BYTES="$(wc -c < "$BINARIES_DIR/boot.ubi" | tr -d '[:space:]')"
-    # Keep four 128 KiB PEBs physically free in the 68-PEB boot partition.
-    # This is deliberately stricter than merely fitting inside 0x00880000.
-    [ "$BOOT_UBI_BYTES" -le $((0x00800000)) ] || {
-        echo "error: boot.ubi exceeds 8 MiB image budget (512 KiB UBI reserve): $BOOT_UBI_BYTES" >&2
-        exit 1
-    }
-
-    cp "$BINARIES_DIR/uboot.env" "$BINARIES_DIR/uboot-env-a.bin"
-    cp "$BINARIES_DIR/uboot.env" "$BINARIES_DIR/uboot-env-b.bin"
-    # Redundant U-Boot env byte follows the CRC: active=1, obsolete=0.
-    printf '\000' | dd of="$BINARIES_DIR/uboot-env-b.bin" bs=1 seek=4 conv=notrunc 2>/dev/null
-
-    make_erased_image()
-    {
-        output="$1"
-        bytes="$2"
-        rm -f "$output"
-        dd if=/dev/zero bs="$bytes" count=1 2>/dev/null | tr '\000' '\377' > "$output"
-    }
-
-    NOR_AT91="$BINARIES_DIR/nor-at91bootstrap.bin"
-    NOR_UBOOT="$BINARIES_DIR/nor-uboot.bin"
-    NOR_ENV="$BINARIES_DIR/nor-uboot-env.bin"
-    NOR_IMAGE="$BINARIES_DIR/nor.img"
-
-    make_erased_image "$NOR_AT91" $((0x8000))
-    dd if="$BINARIES_DIR/boot.bin" of="$NOR_AT91" bs=1 seek=0 conv=notrunc 2>/dev/null
-
-    make_erased_image "$NOR_UBOOT" $((0x138000))
-    dd if="$BINARIES_DIR/u-boot.bin" of="$NOR_UBOOT" bs=1 seek=0 conv=notrunc 2>/dev/null
-    dd if="$BINARIES_DIR/u-boot.nor-trailer" of="$NOR_UBOOT" bs=1 seek=$((0x137ff0)) conv=notrunc 2>/dev/null
-
-    make_erased_image "$NOR_ENV" $((0x20000))
-    dd if="$BINARIES_DIR/uboot-env-a.bin" of="$NOR_ENV" bs=1 seek=0 conv=notrunc 2>/dev/null
-    dd if="$BINARIES_DIR/uboot-env-b.bin" of="$NOR_ENV" bs=1 seek=$((0x10000)) conv=notrunc 2>/dev/null
-
-    make_erased_image "$NOR_IMAGE" $((0x200000))
-    dd if="$NOR_AT91" of="$NOR_IMAGE" bs=1 seek=0 conv=notrunc 2>/dev/null
-    dd if="$NOR_UBOOT" of="$NOR_IMAGE" bs=1 seek=$((0x8000)) conv=notrunc 2>/dev/null
-    dd if="$NOR_ENV" of="$NOR_IMAGE" bs=1 seek=$((0x140000)) conv=notrunc 2>/dev/null
-
-    [ "$(wc -c < "$NOR_AT91" | tr -d '[:space:]')" -eq $((0x8000)) ] ||
-        { echo "error: generated AT91Bootstrap NOR partition image has wrong size" >&2; exit 1; }
-    [ "$(wc -c < "$NOR_UBOOT" | tr -d '[:space:]')" -eq $((0x138000)) ] ||
-        { echo "error: generated U-Boot NOR partition image has wrong size" >&2; exit 1; }
-    [ "$(wc -c < "$NOR_ENV" | tr -d '[:space:]')" -eq $((0x20000)) ] ||
-        { echo "error: generated U-Boot environment NOR partition image has wrong size" >&2; exit 1; }
-    [ "$(wc -c < "$NOR_IMAGE" | tr -d '[:space:]')" -eq $((0x200000)) ] || {
-        echo "error: generated NOR image is not exactly 2 MiB" >&2
-        exit 1
-    }
-
-    install -m 0755 "$SCRIPT_DIR/program-nextgen-flash.sh" \
-        "$BINARIES_DIR/program-nextgen-flash.sh"
-
-    (
-        cd "$BINARIES_DIR"
-        sha256sum boot.bin u-boot.bin u-boot.nor-trailer \
-            uboot-env-a.bin uboot-env-b.bin nextgen.dtb zImage \
-            nor-at91bootstrap.bin nor-uboot.bin nor-uboot-env.bin \
-            boot.ubi rootfs.ubi nor.img > nextgen-flash-manifest.sha256
-    )
-
-    echo "NextGen NOR image:       $NOR_IMAGE"
-    echo "NextGen NAND boot UBI:   $BINARIES_DIR/boot.ubi"
-    echo "NextGen NAND rootfs UBI: $BINARIES_DIR/rootfs.ubi"
-    echo "NextGen flash manifest:  $BINARIES_DIR/nextgen-flash-manifest.sha256"
+if [ "$STORAGE_SCHEMA" = ro-persist-v1 ] && [ "$STORAGE_BACKEND" = nand-ubi ]; then
+    echo "NextGen production boot artifacts staged; RO NAND packager follows."
     exit 0
 fi
 
@@ -347,7 +224,7 @@ truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
 # The RO-root profile reuses the shared boot FAT and data seed, then the
 # dedicated post-image-ro hook builds persist.ext4 and the four-partition card.
 # Do not generate a throwaway legacy card/manifest/writer first.
-if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "ro-persist-v1" ]; then
+if [ "$STORAGE_SCHEMA" = ro-persist-v1 ] && [ "$STORAGE_BACKEND" = sd-ext4 ]; then
     echo "NextGen boot FAT image: $BOOT_IMAGE"
     echo "NextGen data seed:      $DATA_IMAGE"
     exit 0
