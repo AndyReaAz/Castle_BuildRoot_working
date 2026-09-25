@@ -95,6 +95,12 @@ rm -f "$TARGET_DIR/etc/localtime" "$TARGET_DIR/etc/timezone"
 ln -s ../run/nextgen/localtime "$TARGET_DIR/etc/localtime"
 ln -s ../run/nextgen/timezone "$TARGET_DIR/etc/timezone"
 
+# uMTPrd's active configuration is generated from the current gadget identity.
+# Keep the /etc pathname immutable and point it at the RAM-backed runtime file.
+mkdir -p "$TARGET_DIR/etc/umtprd"
+rm -f "$TARGET_DIR/etc/umtprd/umtprd.conf"
+ln -s /run/umtprd/umtprd.conf "$TARGET_DIR/etc/umtprd/umtprd.conf"
+
 mkdir -p "$TARGET_DIR/etc/default"
 cat > "$TARGET_DIR/etc/default/seedrng" <<'EOF'
 SEEDRNG_ARGS="--seed-dir=/persist/os/seedrng"
