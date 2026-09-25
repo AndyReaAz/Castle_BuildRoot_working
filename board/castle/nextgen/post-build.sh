@@ -53,6 +53,25 @@ done
 # Install the complete module tree when this kernel profile produces modules.
 # The LZ4 control kernel is monolithic and legitimately has no module tree.
 EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.6.23-linux4microchip-2024.04+}"
+
+# The current 6.18 image was deliberately carried forward with the deferred
+# startup policy: WILC and the USB gadget UDC are application-owned late
+# services, while any flash components that remain modules stay off the SD
+# boot-critical path.  Refuse an ad-hoc profile string so a hand-written make
+# command cannot silently omit those policy files.
+case "$EXPECTED_KERNEL_RELEASE" in
+    6.18.35-linux4microchip-2026.04.2+)
+        case "$KERNEL_PROFILE" in
+            deferred|deferred-diag) ;;
+            *)
+                echo "error: Linux 6.18 NextGen images require deferred or deferred-diag policy" >&2
+                echo "       use ./build-nextgen-image.sh 6.18 [sound|vibra|both]" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+esac
+
 # output-nextgen is incremental. Never let a prior 6.6 external module tree
 # leak into a 6.18 image alongside the selected release.
 rm -rf \
