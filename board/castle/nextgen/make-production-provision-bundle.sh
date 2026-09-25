@@ -27,6 +27,11 @@ AT91_BYTES="$(wc -c < "$AT91" | tr -d '[:space:]')"
 UBOOT_BYTES="$(wc -c < "$UBOOT" | tr -d '[:space:]')"
 UBI_BYTES="$(wc -c < "$UBI" | tr -d '[:space:]')"
 
+grep -a -q 'FUSE: incompatible existing boot fuse; not modified' "$AT91" || {
+    echo "error: NOR AT91Bootstrap does not contain the NextGen fuse guard" >&2
+    exit 1
+}
+
 [ "$AT91_BYTES" -le $((0x8000)) ] || {
     echo "error: AT91Bootstrap exceeds its 32 KiB NOR partition: $AT91_BYTES" >&2
     exit 1
