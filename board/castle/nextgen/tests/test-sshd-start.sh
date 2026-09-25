@@ -137,6 +137,7 @@ echo "PASS: concurrent SSH health-check start is serialized"
 # cannot expose sshd after engineering mode has been disabled.
 : > "$LOG"
 rm -f "$PIDFILE"
+rm -rf "$KEY_DIR"; mkdir -p "$KEY_DIR"
 rm -rf "$RUNTIME/nextgen-sshd-start.lock"
 rm -f "$RUNTIME/nextgen-sshd-stop.pending"
 
@@ -157,6 +158,7 @@ echo "PASS: engineering disable cancels an in-progress first-use SSH start"
 # A stale lock from a dead process must not permanently suppress SSH recovery.
 : > "$LOG"
 rm -f "$PIDFILE"
+rm -rf "$KEY_DIR"; mkdir -p "$KEY_DIR"
 rm -rf "$RUNTIME/nextgen-sshd-start.lock"
 mkdir -p "$RUNTIME/nextgen-sshd-start.lock"
 echo 999999 > "$RUNTIME/nextgen-sshd-start.lock/pid"
