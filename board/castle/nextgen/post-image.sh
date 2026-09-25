@@ -145,6 +145,18 @@ else
         { echo "error: U-Boot environment has no modeltype identity" >&2; exit 1; }
     grep -q '^model=' "$UBOOT_ENV_TEXT" ||
         { echo "error: U-Boot environment has no model identity" >&2; exit 1; }
+    if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
+        grep -q 'nextgen.env=flash' "$UBOOT_ENV_TEXT" ||
+            { echo "error: flash U-Boot environment is missing nextgen.env=flash" >&2; exit 1; }
+        grep -q 'ubi part boot' "$UBOOT_ENV_TEXT" ||
+            { echo "error: flash U-Boot environment does not attach the boot UBI partition" >&2; exit 1; }
+        grep -q 'ubi read ${loadaddr} device-tree' "$UBOOT_ENV_TEXT" ||
+            { echo "error: flash U-Boot environment does not load the device-tree static volume" >&2; exit 1; }
+        grep -q 'ubi read ${krnladdr} kernel' "$UBOOT_ENV_TEXT" ||
+            { echo "error: flash U-Boot environment does not load the kernel static volume" >&2; exit 1; }
+        grep -q ' && ubi part boot && ' "$UBOOT_ENV_TEXT" ||
+            { echo "error: flash U-Boot environment is not fail-closed" >&2; exit 1; }
+    fi
     grep -q 'nextgen.manufacturer=${manufacturer}' "$UBOOT_ENV_TEXT" ||
         { echo "error: bootargs do not pass manufacturer identity" >&2; exit 1; }
     grep -q 'nextgen.modeltype=${modeltype}' "$UBOOT_ENV_TEXT" ||
