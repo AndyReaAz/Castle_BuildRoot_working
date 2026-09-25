@@ -3,387 +3,377 @@ set -eu
 
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 BOARD="$(CDPATH= cd -- "$HERE/.." && pwd)"
-LAUNCHER="$BOARD/rootfs-overlay/root/startup.sh"
-INSTALLER="$BOARD/nextgen-update-install"
-ACCEPTOR="$BOARD/nextgen-update-accept"
+LAUNCHER="$BOARD/startup-ro.sh"
+INSTALLER="$BOARD/nextgen-update-install-ro"
+ACCEPTOR="$BOARD/nextgen-update-accept-ro"
+COMMON="$BOARD/nextgen-slot-common-ro.sh"
 
-for tool in awk cat chmod dirname md5sum mkdir mktemp mv python3 readlink rm sed sha256sum sync unzip; do
-    command -v "$tool" >/dev/null 2>&1 || {
-        echo "SKIP: missing host tool: $tool" >&2
-        exit 77
-    }
+for file in "$LAUNCHER" "$INSTALLER" "$ACCEPTOR" "$COMMON"; do
+    [ -r "$file" ] || { echo "FAIL: missing $file" >&2; exit 1; }
+done
+for tool in awk chmod cp grep md5sum mkdir mktemp mv python3 rm sed sha256sum sync tr unzip wc; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "SKIP: missing $tool" >&2; exit 77; }
 done
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 TESTS=0
+fail() { echo "FAIL: $*" >&2; exit 1; }
+pass() { TESTS=$((TESTS + 1)); echo "PASS: $*"; }
+assert_eq() { [ "$1" = "$2" ] || fail "$3: expected '$2', got '$1'"; }
+assert_exists() { [ -e "$1" ] || fail "$2: missing $1"; }
+assert_not_exists() { [ ! -e "$1" ] || fail "$2: unexpected $1"; }
 
-fail()
+make_fake_image()
 {
-    echo "FAIL: $*" >&2
-    exit 1
+    image="$1"; product="$2"; version="$3"; exit_code="${4:-0}"
+    cat > "$image" <<EOF_IMAGE
+FAKE_SQFS=1
+product=$product
+version=$version
+exit_code=$exit_code
+platform_abi=1
+EOF_IMAGE
 }
 
-pass()
+write_slot_meta()
 {
-    TESTS=$((TESTS + 1))
-    echo "PASS: $*"
-}
-
-assert_eq()
-{
-    actual="$1"
-    expected="$2"
-    message="$3"
-    [ "$actual" = "$expected" ] ||
-        fail "$message: expected '$expected', got '$actual'"
-}
-
-assert_exists()
-{
-    [ -e "$1" ] || fail "$2: missing $1"
-}
-
-assert_not_exists()
-{
-    [ ! -e "$1" ] || fail "$2: unexpected $1"
-}
-
-assert_link()
-{
-    actual="$(readlink "$1" 2>/dev/null || true)"
-    assert_eq "$actual" "$2" "$3"
+    root="$1"; product="$2"; slot="$3"; version="$4"
+    image="$root/app/$product/$slot.sqfs"
+    cat > "$root/app/$product/$slot.meta" <<EOF_META
+format=4
+product=$product
+version=$version
+platform_abi=1
+bytes=$(wc -c < "$image")
+sha256=$(sha256sum "$image" | awk '{print $1}')
+EOF_META
 }
 
 make_slot()
 {
-    root="$1"
-    product="$2"
-    slot="$3"
-    version="$4"
-    exit_code="${5:-0}"
+    root="$1"; product="$2"; slot="$3"; version="$4"; exit_code="${5:-0}"
+    mkdir -p "$root/app/$product"
+    make_fake_image "$root/app/$product/$slot.sqfs" "$product" "$version" "$exit_code"
+    chmod 0444 "$root/app/$product/$slot.sqfs"
+    write_slot_meta "$root" "$product" "$slot" "$version"
+}
 
-    dir="$root/app/$product/$slot"
+make_factory()
+{
+    root="$1"; product="$2"; version="$3"; dir="$root/factory/$product"
     mkdir -p "$dir/BaseHPD"
-    cat > "$dir/NextGen" <<EOF
+    cat > "$dir/NextGen" <<EOF_APP
 #!/bin/sh
-echo "RUN $slot $version"
-exit $exit_code
-EOF
+echo RUN factory $version
+exit 0
+EOF_APP
     chmod 0755 "$dir/NextGen"
     printf 'translations %s\n' "$version" > "$dir/Translations.csv"
-    printf 'hpd %s\n' "$version" > "$dir/BaseHPD/hpdc.csv"
-    cat > "$dir/bundle.info" <<EOF
-format=3
+    [ "$product" != sound ] || printf 'hpd %s\n' "$version" > "$dir/BaseHPD/hpdc.csv"
+    cat > "$dir/bundle.info" <<EOF_INFO
+format=4
 product=$product
 version=$version
-EOF
+platform_abi=1
+EOF_INFO
+}
+
+install_fake_mount_tools()
+{
+    d="$1/bin"; mkdir -p "$d"
+    cat > "$d/losetup" <<'EOF_LOSETUP'
+#!/bin/sh
+set -eu
+case "${1:-}" in
+-f) printf '%s\n' "${FAKE_LOOP_DEVICE:?}" ;;
+-r) printf '%s\n' "$3" > "${FAKE_LOOP_MAP:?}" ;;
+-d) rm -f "${FAKE_LOOP_MAP:?}" ;;
+*) exit 2 ;;
+esac
+EOF_LOSETUP
+    cat > "$d/mount" <<'EOF_MOUNT'
+#!/bin/sh
+set -eu
+while [ "$#" -gt 2 ]; do shift; done
+source="$1"; target="$2"
+rm -rf "$target"; mkdir -p "$target"
+if [ "$source" = "${FAKE_LOOP_DEVICE:?}" ]; then
+    image="$(cat "${FAKE_LOOP_MAP:?}")"
+    [ -z "${FAKE_MOUNT_FAIL_MATCH:-}" ] || case "$image" in *"$FAKE_MOUNT_FAIL_MATCH"*) exit 1;; esac
+    [ "$(sed -n 's/^FAKE_SQFS=//p' "$image")" = 1 ] || exit 1
+    product="$(sed -n 's/^product=//p' "$image")"
+    version="$(sed -n 's/^version=//p' "$image")"
+    exit_code="$(sed -n 's/^exit_code=//p' "$image")"
+    abi="$(sed -n 's/^platform_abi=//p' "$image")"
+    mkdir -p "$target/BaseHPD"
+    cat > "$target/NextGen" <<EOF_APP
+#!/bin/sh
+echo RUN $product $version
+exit $exit_code
+EOF_APP
+    chmod 0755 "$target/NextGen"
+    printf 'translations %s\n' "$version" > "$target/Translations.csv"
+    [ "$product" != sound ] || printf 'hpd %s\n' "$version" > "$target/BaseHPD/hpdc.csv"
+    printf 'format=4\nproduct=%s\nversion=%s\nplatform_abi=%s\n' "$product" "$version" "$abi" > "$target/bundle.info"
+    fs=squashfs
+else
+    cp -a "$source/." "$target/"; fs=bind
+fi
+tmp="${FAKE_MOUNTS:?}.tmp"
+awk -v p="$target" '$2 != p' "$FAKE_MOUNTS" > "$tmp" 2>/dev/null || true
+printf '%s %s %s ro 0 0\n' "$source" "$target" "$fs" >> "$tmp"
+mv -f "$tmp" "$FAKE_MOUNTS"
+EOF_MOUNT
+    cat > "$d/umount" <<'EOF_UMOUNT'
+#!/bin/sh
+set -eu
+target="$1"; tmp="${FAKE_MOUNTS:?}.tmp"
+awk -v p="$target" '$2 != p' "$FAKE_MOUNTS" > "$tmp" 2>/dev/null || true
+mv -f "$tmp" "$FAKE_MOUNTS"
+rm -rf "$target"; mkdir -p "$target"
+EOF_UMOUNT
+    chmod 0755 "$d/losetup" "$d/mount" "$d/umount"
 }
 
 make_fixture()
 {
-    case_dir="$1"
-    active="$2"
-    previous="$3"
-    accepted_slot="$4"
-    accepted_version="$5"
-
-    root="$case_dir/root"
-    sd="$case_dir/sdcard"
-    run="$case_dir/run"
-    product_file="$case_dir/nextgen-product"
-    mounts="$case_dir/mounts"
-
-    mkdir -p "$root/app/sound" "$root/state/sound" "$root/platform/share"         "$sd/public" "$sd/temp/TempFirmware" "$run"
-    printf '%s\n' sound > "$product_file"
-    : > "$mounts"
-    ln -s "$active" "$root/app/sound/active"
-    ln -s "$previous" "$root/app/sound/previous"
-    printf '%s %s\n' "$accepted_slot" "$accepted_version" > "$root/state/sound/accepted"
-    printf '%s\n' unsigned-development > "$root/platform/share/update-signing-policy"
+    c="$1"; accepted_ref="${2:-}"; accepted_version="${3:-}"
+    mkdir -p "$c/root/app/sound/active" "$c/root/factory/sound" \
+        "$c/root/state/sound" "$c/root/platform/bin" "$c/root/platform/share" \
+        "$c/sdcard/public" "$c/sdcard/temp/TempFirmware" "$c/run"
+    cp "$COMMON" "$c/root/platform/bin/nextgen-slot-common.sh"
+    chmod 0755 "$c/root/platform/bin/nextgen-slot-common.sh"
+    printf 'sound\n' > "$c/nextgen-product"
+    printf '1\n' > "$c/nextgen-platform-abi"
+    printf 'unsigned-development\n' > "$c/root/platform/share/update-signing-policy"
+    : > "$c/mounts"; : > "$c/persist-ready"
+    [ -z "$accepted_ref" ] || printf '%s %s\n' "$accepted_ref" "$accepted_version" > "$c/root/state/sound/accepted"
+    install_fake_mount_tools "$c"
 }
 
-mount_sd()
+setup_known_good()
 {
-    sd="$1"
-    mounts="$2"
-    printf 'fake %s ext4 rw 0 0\n' "$sd" > "$mounts"
+    c="$1"; version="${2:-110}"
+    make_fixture "$c" slotA "$version"
+    make_slot "$c/root" sound slotA "$version"
+    make_factory "$c/root" sound "$version"
 }
+
+mount_sd() { printf 'fake %s ext4 rw 0 0\n' "$1/sdcard" >> "$1/mounts"; }
 
 run_launcher()
 {
-    case_dir="$1"
-    NEXTGEN_ROOT="$case_dir/root"     NEXTGEN_PRODUCT_FILE="$case_dir/nextgen-product"         /bin/sh "$LAUNCHER"
+    c="$1"
+    PATH="$c/bin:$PATH" FAKE_LOOP_DEVICE="$c/loop0" FAKE_LOOP_MAP="$c/loop-map" \
+    FAKE_MOUNTS="$c/mounts" FAKE_MOUNT_FAIL_MATCH="${FAKE_MOUNT_FAIL_MATCH:-}" \
+    NEXTGEN_ROOT="$c/root" NEXTGEN_PRODUCT_FILE="$c/nextgen-product" \
+    NEXTGEN_PERSIST_READY="$c/persist-ready" NEXTGEN_PLATFORM_ABI_FILE="$c/nextgen-platform-abi" \
+    NEXTGEN_RUN_LOOP="$c/run/nextgen-app-loop" NEXTGEN_RUN_REF="$c/run/nextgen-app-ref" \
+    NEXTGEN_MOUNTS_FILE="$c/mounts" /bin/sh "$LAUNCHER"
 }
 
 run_acceptor()
 {
-    case_dir="$1"
-    NEXTGEN_ROOT="$case_dir/root"     NEXTGEN_SDCARD_ROOT="$case_dir/sdcard"     NEXTGEN_MOUNTS_FILE="$case_dir/mounts"         /bin/sh "$ACCEPTOR" sound
+    c="$1"
+    PATH="$c/bin:$PATH" FAKE_LOOP_DEVICE="$c/loop0" FAKE_LOOP_MAP="$c/loop-map" FAKE_MOUNTS="$c/mounts" \
+    NEXTGEN_ROOT="$c/root" NEXTGEN_SDCARD_ROOT="$c/sdcard" NEXTGEN_MOUNTS_FILE="$c/mounts" \
+    NEXTGEN_PLATFORM_ABI_FILE="$c/nextgen-platform-abi" NEXTGEN_RUN_REF="$c/run/nextgen-app-ref" \
+    /bin/sh "$ACCEPTOR" sound
 }
 
 run_installer()
 {
-    case_dir="$1"
-    package="$2"
-    NEXTGEN_ROOT="$case_dir/root"     NEXTGEN_SDCARD_ROOT="$case_dir/sdcard"     NEXTGEN_RUN_ROOT="$case_dir/run"         /bin/sh "$INSTALLER" sound "$package"
+    c="$1"; package="$2"
+    PATH="$c/bin:$PATH" FAKE_LOOP_DEVICE="$c/loop0" FAKE_LOOP_MAP="$c/loop-map" FAKE_MOUNTS="$c/mounts" \
+    NEXTGEN_ROOT="$c/root" NEXTGEN_SDCARD_ROOT="$c/sdcard" NEXTGEN_RUN_ROOT="$c/run" \
+    NEXTGEN_MOUNTS_FILE="$c/mounts" NEXTGEN_PLATFORM_ABI_FILE="$c/nextgen-platform-abi" \
+    /bin/sh "$INSTALLER" sound "$package"
 }
 
 build_bundle()
 {
-    package="$1"
-    version="$2"
-
-    python3 - "$package" "$version" <<'PY'
-from __future__ import annotations
-import hashlib
+    package="$1"; manifest_version="$2"; image_version="${3:-$manifest_version}"
+    work="$TMP/bundle-$manifest_version-$$"; rm -rf "$work"; mkdir -p "$work"
+    image="$work/Application.sqfs"
+    make_fake_image "$image" sound "$image_version" 0
+    bytes="$(wc -c < "$image")"; sha="$(sha256sum "$image" | awk '{print $1}')"
+    manifest="$work/manifest.txt"
+    printf 'NEXTGEN_APP_IMAGE 4 sound %s 1\nimage=Application.sqfs\nbytes=%s\nsha256=%s\n' \
+        "$manifest_version" "$bytes" "$sha" > "$manifest"
+    md5="$(md5sum "$manifest" | awk '{print $1}')"
+    final_manifest="$work/manifest_V${manifest_version}_${md5}.txt"
+    mv "$manifest" "$final_manifest"
+    python3 - "$package" "$image" "$final_manifest" <<'PY'
+import sys, zipfile
 from pathlib import Path
-import stat
-import sys
-import zipfile
-
-package = Path(sys.argv[1])
-version = int(sys.argv[2])
+package, image, manifest = map(Path, sys.argv[1:])
 package.parent.mkdir(parents=True, exist_ok=True)
-
-payloads = [
-    ("NextGen", "NextGen", 0o755,
-     f"#!/bin/sh\necho RUN candidate {version}\nexit 0\n".encode()),
-    ("Translations", "Translations.csv", 0o644,
-     f"translations {version}\n".encode()),
-    ("hpdc", "BaseHPD/hpdc.csv", 0o644,
-     f"hpd {version}\n".encode()),
-]
-
-members = []
-manifest = [f"NEXTGEN_APP_BUNDLE 3 sound {version}"]
-for label, target, mode, data in payloads:
-    md5 = hashlib.md5(data).hexdigest()
-    suffix = ".csv" if label != "NextGen" else ""
-    name = f"{label}_{md5}{suffix}"
-    sha = hashlib.sha256(data).hexdigest()
-    manifest.append(f"{name} {target} {mode:04o} {sha}")
-    members.append((name, mode, data))
-
-manifest_data = ("\n".join(manifest) + "\n").encode("ascii")
-manifest_name = (
-    f"manifest_V{version}_{hashlib.md5(manifest_data).hexdigest()}.txt"
-)
-
-def info(name: str, mode: int) -> zipfile.ZipInfo:
-    z = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-    z.create_system = 3
-    z.external_attr = (stat.S_IFREG | mode) << 16
-    z.compress_type = zipfile.ZIP_DEFLATED
-    return z
-
-with zipfile.ZipFile(package, "w", allowZip64=False) as zf:
-    for name, mode, data in members:
-        zf.writestr(info(name, mode), data)
-    zf.writestr(info(manifest_name, 0o644), manifest_data)
+with zipfile.ZipFile(package, 'w', compression=zipfile.ZIP_DEFLATED) as z:
+    z.write(image, image.name)
+    z.write(manifest, manifest.name)
 PY
+    rm -rf "$work"
 }
 
 test_install_boot_accept()
 {
-    case_dir="$TMP/install-boot-accept"
-    make_fixture "$case_dir" slotA slotA slotA 110
-    make_slot "$case_dir/root" sound slotA 110
-    make_slot "$case_dir/root" sound factory 110
-    mount_sd "$case_dir/sdcard" "$case_dir/mounts"
-
-    package="$case_dir/sdcard/public/update_V111.zip"
-    build_bundle "$package" 111
-
-    run_installer "$case_dir" "$package" >/dev/null
-
-    assert_link "$case_dir/root/app/sound/active" slotA "installer must not switch active"
-    assert_link "$case_dir/root/app/sound/previous" slotA "installer previous"
-    assert_eq "$(cat "$case_dir/root/state/sound/pending")" "slotB slotA 111" "pending record"
-    assert_eq "$(sed -n 's/^version=//p' "$case_dir/root/app/sound/slotB/bundle.info")" 111 "staged version"
-    assert_eq "$(cat "$case_dir/root/state/sound/accepted")" "slotA 110" "accepted remains old"
-
-    run_launcher "$case_dir" >/dev/null
-    assert_link "$case_dir/root/app/sound/active" slotB "first candidate boot switches active"
-    assert_link "$case_dir/root/app/sound/previous" slotA "known-good previous retained"
-    assert_eq "$(cat "$case_dir/root/state/sound/booting")" slotB "booting marker"
-
-    run_acceptor "$case_dir" >/dev/null
-    assert_eq "$(cat "$case_dir/root/state/sound/accepted")" "slotB 111" "candidate accepted"
-    assert_not_exists "$case_dir/root/state/sound/pending" "pending cleared"
-    assert_not_exists "$case_dir/root/state/sound/booting" "booting cleared"
-    assert_not_exists "$case_dir/root/state/sound/cleanup" "cleanup cleared"
-    assert_not_exists "$package" "accepted USB package removed"
-    pass "install -> first boot -> acceptance -> USB cleanup"
+    c="$TMP/install"; setup_known_good "$c"; mount_sd "$c"
+    p="$c/sdcard/public/update_V111.zip"; build_bundle "$p" 111
+    run_installer "$c" "$p" >/dev/null
+    assert_exists "$c/root/app/sound/slotB.sqfs" "slotB image"
+    assert_eq "$(cat "$c/root/state/sound/pending")" "slotB slotA 111" "pending"
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotA 110" "accepted before boot"
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/root/state/sound/booting")" slotB "booting"
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotB 111" "runtime ref"
+    run_acceptor "$c" >/dev/null
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotB 111" "accepted after boot"
+    assert_eq "$(cat "$c/root/state/sound/previous")" "slotA 110" "previous"
+    assert_not_exists "$c/root/state/sound/pending" "pending cleared"
+    assert_not_exists "$c/root/state/sound/cleanup" "cleanup cleared"
+    assert_not_exists "$p" "accepted package removed"
+    pass "format-4 install, candidate boot and acceptance"
 }
 
-test_power_loss_after_active_switch()
+test_unaccepted_candidate_rolls_back()
 {
-    case_dir="$TMP/active-switch"
-    make_fixture "$case_dir" slotB slotA slotA 110
-    make_slot "$case_dir/root" sound slotA 110
-    make_slot "$case_dir/root" sound slotB 111
-    make_slot "$case_dir/root" sound factory 110
-    printf '%s\n' "slotB slotA 111" > "$case_dir/root/state/sound/pending"
-
-    run_launcher "$case_dir" >/dev/null
-
-    assert_link "$case_dir/root/app/sound/active" slotB "resumed candidate active"
-    assert_link "$case_dir/root/app/sound/previous" slotA "resumed previous"
-    assert_eq "$(cat "$case_dir/root/state/sound/booting")" slotB "booting recreated"
-    assert_not_exists "$case_dir/root/state/sound/rollback" "must not prematurely roll back"
-    pass "power loss after active switch but before booting marker"
+    c="$TMP/restart"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111
+    printf 'slotB slotA 111\n' > "$c/root/state/sound/pending"
+    run_launcher "$c" >/dev/null
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotA 110" "rollback runtime"
+    assert_exists "$c/root/state/sound/rollback" "rollback marker"
+    assert_not_exists "$c/root/state/sound/pending" "rollback pending"
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotA 110" "accepted unchanged"
+    pass "unaccepted candidate restart rolls back"
 }
 
-test_failed_candidate_rollback_usb_retained()
+test_cleanup_before_pending_power_loss()
 {
-    case_dir="$TMP/rollback-usb"
-    make_fixture "$case_dir" slotB slotA slotA 110
-    make_slot "$case_dir/root" sound slotA 110
-    make_slot "$case_dir/root" sound slotB 112
-    make_slot "$case_dir/root" sound factory 110
-    printf '%s\n' "slotB slotA 112" > "$case_dir/root/state/sound/pending"
-    printf '%s\n' slotB > "$case_dir/root/state/sound/booting"
-
-    package="$case_dir/sdcard/public/update_V112.zip"
-    printf 'failed candidate package\n' > "$package"
-    printf '112 %s\n' "$package" > "$case_dir/root/state/sound/cleanup"
-    mount_sd "$case_dir/sdcard" "$case_dir/mounts"
-
-    run_launcher "$case_dir" >/dev/null
-
-    assert_link "$case_dir/root/app/sound/active" slotA "rollback active"
-    assert_link "$case_dir/root/app/sound/previous" slotA "rollback previous"
-    assert_exists "$case_dir/root/state/sound/rollback" "rollback marker"
-    assert_not_exists "$case_dir/root/state/sound/pending" "rollback pending cleared"
-    assert_not_exists "$case_dir/root/state/sound/booting" "rollback booting cleared"
-
-    run_acceptor "$case_dir" >/dev/null
-
-    assert_exists "$package" "rolled-back USB package retained"
-    assert_not_exists "$case_dir/root/state/sound/rollback" "rollback cleanup marker cleared"
-    assert_not_exists "$case_dir/root/state/sound/cleanup" "rollback cleanup record cleared"
-    assert_eq "$(cat "$case_dir/root/state/sound/accepted")" "slotA 110" "old acceptance preserved"
-    pass "failed candidate rolls back and retains USB package"
+    c="$TMP/prepending"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111; mount_sd "$c"
+    p="$c/sdcard/public/update_V111.zip"; printf x > "$p"; printf '111 %s\n' "$p" > "$c/root/state/sound/cleanup"
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotA 110" "orphan inactive ignored"
+    run_acceptor "$c" >/dev/null
+    assert_exists "$p" "interrupted USB package retained"
+    assert_not_exists "$c/root/state/sound/cleanup" "orphan cleanup reconciled"
+    pass "power loss after image/cleanup but before pending"
 }
 
-test_durable_acceptance_survives_cleanup_power_loss()
+test_previous_before_accepted_power_loss()
 {
-    case_dir="$TMP/durable-accept"
-    make_fixture "$case_dir" slotB slotA slotB 111
-    make_slot "$case_dir/root" sound slotA 110
-    make_slot "$case_dir/root" sound slotB 111
-    make_slot "$case_dir/root" sound factory 110
-    printf '%s\n' "slotB slotA 111" > "$case_dir/root/state/sound/pending"
-    printf '%s\n' slotB > "$case_dir/root/state/sound/booting"
-
-    package="$case_dir/sdcard/public/update_V111.zip"
-    printf 'accepted package\n' > "$package"
-    printf '111 %s\n' "$package" > "$case_dir/root/state/sound/cleanup"
-    mount_sd "$case_dir/sdcard" "$case_dir/mounts"
-
-    run_launcher "$case_dir" >/dev/null
-
-    assert_link "$case_dir/root/app/sound/active" slotB "accepted active preserved"
-    assert_eq "$(cat "$case_dir/root/state/sound/accepted")" "slotB 111" "durable acceptance preserved"
-    assert_not_exists "$case_dir/root/state/sound/pending" "accepted pending finalised"
-    assert_not_exists "$case_dir/root/state/sound/booting" "accepted booting finalised"
-    assert_exists "$package" "launcher must not own package cleanup"
-
-    run_acceptor "$case_dir" >/dev/null
-    assert_not_exists "$package" "acceptor retries accepted package cleanup"
-    assert_not_exists "$case_dir/root/state/sound/cleanup" "accepted cleanup record cleared"
-    pass "durable acceptance is not rolled back after cleanup power loss"
+    c="$TMP/preaccepted"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111
+    printf 'slotB slotA 111\n' > "$c/root/state/sound/pending"; printf 'slotB\n' > "$c/root/state/sound/booting"
+    printf 'slotA 110\n' > "$c/root/state/sound/previous"
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotA 110" "old runtime"
+    assert_exists "$c/root/state/sound/rollback" "rollback after interrupted accept"
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotA 110" "accepted authoritative"
+    pass "power loss after previous but before accepted"
 }
 
-test_cleanup_waits_for_sd_mount()
+test_accepted_before_marker_cleanup_power_loss()
 {
-    case_dir="$TMP/no-sd"
-    make_fixture "$case_dir" slotB slotB slotB 111
-    make_slot "$case_dir/root" sound slotB 111
-
-    package="$case_dir/sdcard/public/update_V111.zip"
-    printf 'accepted package\n' > "$package"
-    printf '111 %s\n' "$package" > "$case_dir/root/state/sound/cleanup"
-
-    run_acceptor "$case_dir" >/dev/null
-    assert_exists "$package" "package retained while SD not mounted"
-    assert_exists "$case_dir/root/state/sound/cleanup" "cleanup retained while SD not mounted"
-
-    mount_sd "$case_dir/sdcard" "$case_dir/mounts"
-    run_acceptor "$case_dir" >/dev/null
-    assert_not_exists "$package" "package removed after SD returns"
-    assert_not_exists "$case_dir/root/state/sound/cleanup" "cleanup cleared after SD returns"
-    pass "accepted cleanup waits for mounted SD"
+    c="$TMP/postaccepted"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111
+    printf 'slotB slotA 111\n' > "$c/root/state/sound/pending"; printf 'slotB\n' > "$c/root/state/sound/booting"
+    printf 'slotA 110\n' > "$c/root/state/sound/previous"; printf 'slotB 111\n' > "$c/root/state/sound/accepted"
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotB 111" "new runtime"
+    assert_not_exists "$c/root/state/sound/pending" "stale pending cleared"
+    assert_not_exists "$c/root/state/sound/rollback" "no rollback after durable accept"
+    pass "durable accepted state wins after marker-cleanup power loss"
 }
 
-test_cloud_rollback_requeues_package()
+test_mount_failure_fallback()
 {
-    case_dir="$TMP/cloud-rollback"
-    make_fixture "$case_dir" slotA slotA slotA 111
-    make_slot "$case_dir/root" sound slotA 111
-
-    package="$case_dir/sdcard/temp/TempFirmware/NgSound_V112_deadbeef.zip"
-    printf 'cloud package\n' > "$package"
-    printf 'applying:112\n' > "$case_dir/sdcard/temp/TempFirmware/.status"
-    printf '112 %s\n' "$package" > "$case_dir/root/state/sound/cleanup"
-    printf 'rollback\n' > "$case_dir/root/state/sound/rollback"
-    mount_sd "$case_dir/sdcard" "$case_dir/mounts"
-
-    run_acceptor "$case_dir" >/dev/null
-
-    assert_exists "$package" "cloud rollback package retained"
-    assert_eq "$(cat "$case_dir/sdcard/temp/TempFirmware/.status")" "ready:112" "cloud package requeued"
-    assert_not_exists "$case_dir/root/state/sound/cleanup" "cloud cleanup cleared"
-    assert_not_exists "$case_dir/root/state/sound/rollback" "cloud rollback marker cleared"
-    pass "cloud rollback restores ready status"
+    c="$TMP/mountfail"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111
+    printf 'slotB slotA 111\n' > "$c/root/state/sound/pending"
+    FAKE_MOUNT_FAIL_MATCH=slotB.sqfs run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotA 110" "mount fallback"
+    assert_exists "$c/root/state/sound/rollback" "mount rollback"
+    pass "candidate mount failure falls back to accepted image"
 }
 
-test_malformed_pending_rolls_back()
+test_corrupt_hash_fallback()
 {
-    case_dir="$TMP/malformed-pending"
-    make_fixture "$case_dir" slotB slotA slotA 110
-    make_slot "$case_dir/root" sound slotA 110
-    make_slot "$case_dir/root" sound slotB 111
-    make_slot "$case_dir/root" sound factory 110
-    printf '%s\n' "slotB slotA 999" > "$case_dir/root/state/sound/pending"
+    c="$TMP/hashfail"; setup_known_good "$c"; make_slot "$c/root" sound slotB 111
+    chmod 0644 "$c/root/app/sound/slotB.sqfs"; printf corrupt >> "$c/root/app/sound/slotB.sqfs"; chmod 0444 "$c/root/app/sound/slotB.sqfs"
+    printf 'slotB slotA 111\n' > "$c/root/state/sound/pending"
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "slotA 110" "hash fallback"
+    assert_exists "$c/root/state/sound/rollback" "hash rollback"
+    pass "corrupt image hash is rejected before execution"
+}
 
-    run_launcher "$case_dir" >/dev/null
+test_factory_repairs_empty_state()
+{
+    c="$TMP/factory"; make_fixture "$c"; make_factory "$c/root" sound 100
+    run_launcher "$c" >/dev/null
+    assert_eq "$(cat "$c/run/nextgen-app-ref")" "factory 100" "factory runtime"
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "factory 100" "factory accepted repair"
+    assert_eq "$(cat "$c/root/state/sound/previous")" "factory 100" "factory previous repair"
+    pass "empty persistent app state recovers from immutable factory"
+}
 
-    assert_link "$case_dir/root/app/sound/active" slotA "malformed pending recovery active"
-    assert_link "$case_dir/root/app/sound/previous" slotA "malformed pending recovery previous"
-    assert_exists "$case_dir/root/state/sound/rollback" "malformed pending rollback marker"
-    assert_not_exists "$case_dir/root/state/sound/pending" "malformed pending removed"
-    pass "malformed pending transaction recovers known-good slot"
+test_manifest_image_disagreement_rejected()
+{
+    c="$TMP/mismatch"; setup_known_good "$c"
+    p="$c/sdcard/public/update_V111.zip"; build_bundle "$p" 111 112
+    run_installer "$c" "$p" >/dev/null 2>&1 && fail "manifest/image version mismatch accepted"
+    assert_not_exists "$c/root/state/sound/pending" "mismatch pending"
+    assert_eq "$(cat "$c/root/state/sound/accepted")" "slotA 110" "mismatch accepted"
+    pass "installer validates mounted image against manifest"
 }
 
 test_equal_version_rejected()
 {
-    case_dir="$TMP/equal-version"
-    make_fixture "$case_dir" slotA slotA slotA 110
-    make_slot "$case_dir/root" sound slotA 110
-    make_slot "$case_dir/root" sound factory 110
-
-    package="$case_dir/sdcard/public/update_V110.zip"
-    build_bundle "$package" 110
-
-    if run_installer "$case_dir" "$package" >/dev/null 2>&1; then
-        fail "equal-version installer unexpectedly succeeded"
-    fi
-
-    assert_link "$case_dir/root/app/sound/active" slotA "equal-version active unchanged"
-    assert_eq "$(cat "$case_dir/root/state/sound/accepted")" "slotA 110" "equal-version acceptance unchanged"
-    assert_not_exists "$case_dir/root/state/sound/pending" "equal-version pending absent"
-    pass "equal-version application bundle rejected"
+    c="$TMP/equal"; setup_known_good "$c"
+    p="$c/sdcard/public/update_V110.zip"; build_bundle "$p" 110
+    run_installer "$c" "$p" >/dev/null 2>&1 && fail "equal version accepted"
+    assert_not_exists "$c/root/state/sound/pending" "equal pending"
+    pass "equal version image is rejected"
 }
 
-test_install_boot_accept
-test_power_loss_after_active_switch
-test_failed_candidate_rollback_usb_retained
-test_durable_acceptance_survives_cleanup_power_loss
-test_cleanup_waits_for_sd_mount
-test_cloud_rollback_requeues_package
-test_malformed_pending_rolls_back
-test_equal_version_rejected
+test_cleanup_waits_for_sd()
+{
+    c="$TMP/nosd"; setup_known_good "$c"; printf 'slotA 110\n' > "$c/run/nextgen-app-ref"
+    p="$c/sdcard/public/update_V110.zip"; printf x > "$p"; printf '110 %s\n' "$p" > "$c/root/state/sound/cleanup"
+    run_acceptor "$c" >/dev/null
+    assert_exists "$c/root/state/sound/cleanup" "cleanup retained without SD"
+    mount_sd "$c"; run_acceptor "$c" >/dev/null
+    assert_not_exists "$p" "accepted package removed when SD returns"
+    assert_not_exists "$c/root/state/sound/cleanup" "cleanup cleared when SD returns"
+    pass "accepted cleanup waits for mounted SD"
+}
 
-echo "All $TESTS NextGen update state-machine tests passed"
+test_cloud_rollback_requeue()
+{
+    c="$TMP/cloud"; setup_known_good "$c"; mount_sd "$c"
+    p="$c/sdcard/temp/TempFirmware/NgSound_V111_deadbeef.zip"; printf x > "$p"
+    printf 'applying:111\n' > "$c/sdcard/temp/TempFirmware/.status"
+    printf '111 %s\n' "$p" > "$c/root/state/sound/cleanup"; printf 'rollback\n' > "$c/root/state/sound/rollback"
+    run_acceptor "$c" >/dev/null
+    assert_eq "$(cat "$c/sdcard/temp/TempFirmware/.status")" "ready:111" "cloud requeue"
+    assert_not_exists "$c/root/state/sound/rollback" "rollback cleared"
+    pass "cloud rollback restores ready status"
+}
+
+for t in \
+    test_install_boot_accept \
+    test_unaccepted_candidate_rolls_back \
+    test_cleanup_before_pending_power_loss \
+    test_previous_before_accepted_power_loss \
+    test_accepted_before_marker_cleanup_power_loss \
+    test_mount_failure_fallback \
+    test_corrupt_hash_fallback \
+    test_factory_repairs_empty_state \
+    test_manifest_image_disagreement_rejected \
+    test_equal_version_rejected \
+    test_cleanup_waits_for_sd \
+    test_cloud_rollback_requeue
+do
+    "$t"
+done
+
+echo "All $TESTS NextGen format-4 update state-machine tests passed"
