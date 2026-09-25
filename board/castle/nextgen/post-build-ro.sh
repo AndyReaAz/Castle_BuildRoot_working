@@ -27,7 +27,7 @@ VERSION="$(sed -n 's/^version=//p' "$OLD_APP/slotA/bundle.info")"
 case "$VERSION" in ''|*[!0-9]*) echo "error: invalid staged Application version" >&2; exit 1 ;; esac
 
 rm -rf "$PERSIST_SEED" "$SLOT_SOURCE"
-mkdir -p     "$PERSIST_SEED/app/$PRODUCT/active"     "$PERSIST_SEED/data"     "$PERSIST_SEED/state"     "$PERSIST_SEED/common-state"     "$PERSIST_SEED/os/NetworkManager/system-connections"     "$PERSIST_SEED/os/NetworkManager/state"     "$PERSIST_SEED/os/dbus"     "$PERSIST_SEED/os/ssh"     "$PERSIST_SEED/os/seedrng"
+mkdir -p     "$PERSIST_SEED/app/$PRODUCT/active"     "$PERSIST_SEED/data"     "$PERSIST_SEED/state"     "$PERSIST_SEED/common-state"     "$PERSIST_SEED/os/NetworkManager/system-connections"     "$PERSIST_SEED/os/NetworkManager/state"     "$PERSIST_SEED/os/dbus"     "$PERSIST_SEED/os/chrony"     "$PERSIST_SEED/os/ssh"     "$PERSIST_SEED/os/seedrng"
 
 cp -a "$OLD_DATA/." "$PERSIST_SEED/data/"
 cp -a "$OLD_STATE/." "$PERSIST_SEED/state/"
