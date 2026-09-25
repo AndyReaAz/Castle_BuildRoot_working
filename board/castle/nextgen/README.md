@@ -164,3 +164,35 @@ After Buildroot stages the root filesystem,
 layout, slot metadata, helpers, fonts and signing policy. A bad layout therefore
 fails the image build rather than producing a card image with a latent startup
 failure.
+
+
+## Linux 6.18 NAND-root timing profile
+
+The isolated `6.18-nand` image profile keeps AT91Bootstrap, U-Boot, the DTB
+and the kernel on the SD boot partition, but changes the Linux root filesystem
+to the SPI-NAND `rootfs` UBI volume:
+
+```text
+ubi.mtd=rootfs root=ubi0:rootfs rootfstype=ubifs rw
+```
+
+This deliberately measures only the UBI/UBIFS root-filesystem path. It does not
+change the normal SD-root environment and does not move the kernel or DTB into
+NAND.
+
+Build it with:
+
+```sh
+./build-nextgen-image.sh 6.18-nand sound
+# or: vibra
+```
+
+Before booting this profile, write the matching `rootfs.ubi` image to the
+128 MiB NAND `rootfs` partition. The partition is defined by the NextGen DTB
+at offset `0x00880000` and is exposed by Linux as the MTD partition named
+`rootfs`. Use the partition name when scripting rather than relying on a
+fixed MTD number.
+
+The timing profile uses the normal preemptible Linux 6.18 kernel and otherwise
+retains the same runtime policy as the `6.18` image. Switching back to the
+normal SD environment returns the meter to SD-root operation.
