@@ -325,8 +325,12 @@ build_product()
             echo "error: NOR programming image is not exactly 2 MiB" >&2
             exit 1
         }
-        [ "$(wc -c < "$out/images/boot.ubi")" -le $((0x00880000)) ] || {
-            echo "error: boot.ubi exceeds the 8.5 MiB boot partition" >&2
+        [ "$(wc -c < "$out/images/boot.ubi")" -le $((0x00800000)) ] || {
+            echo "error: boot.ubi exceeds the 8 MiB image budget reserved inside the 8.5 MiB boot partition" >&2
+            exit 1
+        }
+        (cd "$out/images" && sha256sum -c nextgen-flash-manifest.sha256 >/dev/null) || {
+            echo "error: flash image manifest verification failed" >&2
             exit 1
         }
         printf 'NOR programming image: %s\n' "$out/images/nor.img"
