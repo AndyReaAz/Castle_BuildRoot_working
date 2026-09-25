@@ -180,9 +180,26 @@ settings_valid()
     [ -f "$file" ] || return 1
     [ "$(wc -c < "$file" 2>/dev/null)" -ge 5 ] || return 1
 
-    settings_uint "$file" SerialNumber >/dev/null &&
-        settings_uint "$file" Manufacturer >/dev/null &&
-        settings_uint "$file" ModelType >/dev/null
+    count="$(settings_count "$file")" || return 1
+    json_index="$(settings_uint "$file" Index)" || return 1
+    [ "$json_index" = "$count" ] || return 1
+
+    settings_uint "$file" SerialNumber >/dev/null || return 1
+    manufacturer="$(settings_uint "$file" Manufacturer)" || return 1
+    modeltype="$(settings_uint "$file" ModelType)" || return 1
+
+    case "$manufacturer" in
+        1|2|3|4) ;;
+        *) return 1 ;;
+    esac
+
+    case "$PRODUCT:$modeltype" in
+        sound:0|sound:1|sound:2|sound:3) ;;
+        vibra:128|vibra:129) ;;
+        *) return 1 ;;
+    esac
+
+    return 0
 }
 
 select_settings_file()
