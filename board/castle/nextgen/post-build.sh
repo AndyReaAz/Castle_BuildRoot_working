@@ -8,6 +8,7 @@ APP_DIR="${NEXTGEN_APP_DIR:-$WORKSPACE_DIR/app}"
 PRODUCT="${NEXTGEN_PRODUCT:-sound}"
 KERNEL_BUILD_DIR="${NEXTGEN_KERNEL_BUILD_DIR:-$WORKSPACE_DIR/linux-working/build-fast}"
 KERNEL_MODULES_ROOT="${NEXTGEN_KERNEL_MODULES_ROOT:-$KERNEL_BUILD_DIR/mods/lib/modules}"
+STORAGE_SCHEMA="${NEXTGEN_STORAGE_SCHEMA:-legacy}"
 COMMON_RUNTIME="$APP_DIR/Application/Files/Runtime/Sound/Exec"
 
 NEXTGEN_ROOT="$TARGET_DIR/opt/nextgen"
@@ -53,6 +54,27 @@ done
 # Install the complete module tree when this kernel profile produces modules.
 # The LZ4 control kernel is monolithic and legitimately has no module tree.
 EXPECTED_KERNEL_RELEASE="${NEXTGEN_EXPECTED_KERNEL_RELEASE:-6.6.23-linux4microchip-2024.04+}"
+
+case "$STORAGE_SCHEMA" in
+    legacy) ;;
+    ro-persist-v1)
+        [ -r "$KERNEL_BUILD_DIR/.config" ] || {
+            echo "error: RO-root profile has no external kernel .config: $KERNEL_BUILD_DIR/.config" >&2
+            exit 1
+        }
+        for sym in BLK_DEV_LOOP SQUASHFS SQUASHFS_LZO; do
+            grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
+                echo "error: RO-root profile requires CONFIG_${sym}=y in $KERNEL_BUILD_DIR/.config" >&2
+                echo "       rebuild the 6.18 kernel from chatgpt/ro-root-image-slots first" >&2
+                exit 1
+            }
+        done
+        ;;
+    *)
+        echo "error: unknown NextGen storage schema: $STORAGE_SCHEMA" >&2
+        exit 1
+        ;;
+esac
 
 # The current 6.18 image was deliberately carried forward with the deferred
 # startup policy: WILC and the USB gadget UDC are application-owned late
