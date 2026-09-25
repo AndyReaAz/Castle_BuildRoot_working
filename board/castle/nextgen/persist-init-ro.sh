@@ -57,4 +57,14 @@ bind_one "$PERSIST/os/NetworkManager/state" /var/lib/NetworkManager
 bind_one "$PERSIST/os/dbus" /var/lib/dbus
 bind_one "$PERSIST/os/chrony" /var/lib/chrony
 
+# /etc/localtime and /etc/timezone are immutable symlinks into /run. Seed a
+# valid UTC view before the Application loads Settings and replaces both files.
+mkdir -p /run/nextgen
+if [ ! -e /run/nextgen/localtime ]; then
+    ln -s /usr/share/zoneinfo/Etc/UTC /run/nextgen/localtime
+fi
+if [ ! -e /run/nextgen/timezone ]; then
+    printf '%s\n' Etc/UTC > /run/nextgen/timezone
+fi
+
 touch "$READY"
