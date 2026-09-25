@@ -108,62 +108,121 @@ the existing `deferred-diag` policy so WILC, QSPI and SPI-NAND stay
 application/manual-load controlled.
 
 
-## Application slot layout
+## Read-only root and Application image slots
 
-The root filesystem now separates platform files, release-owned application
-files and mutable instrument state:
+The `6.18-ro` profile is the first complete storage-layout swap. It keeps
+AT91Bootstrap, U-Boot, kernel and DTB on the SD boot partition, but changes
+Linux/userspace ownership to:
 
 ```text
-/opt/nextgen/
-  platform/bin/            Buildroot-owned helpers
-  platform/share/          update verification policy/key
-  common/share/            realm-independent fonts/assets
-                           (Arial.ttf, NotoSansCJKtc-Regular.ttf,
-                            ionicons.ttf, open-iconic.ttf)
-  common/state/            realm-independent writable state (engmode, NextGenCrash.log)
-  app/<sound|vibra>/
-    slotA/                 update slot
-    slotB/                 update slot, created on first routine update
-    factory/               image-built recovery copy
-    active -> slotA
-    previous -> slotA
-  data/<sound|vibra>/      settings, calibration, templates, FTP queue
-  state/platform/          platform transaction state
-                           (sd-format.pending, sd-reformat.legacy)
-  state/<sound|vibra>/     update/rollback state
-                           (pending, booting, accepted, rollback, cleanup)
+p1  FAT       /boot      boot.bin, U-Boot, zImage, DTB, uboot.env
+p2  SquashFS  /          immutable system root
+p3  ext4      /persist   durable instrument/application state
+p4  ext4      /sdcard    recordings, imports, exports, update download staging
 ```
 
-A fresh image seeds `slotA` and `factory` from the same validated application
-build. The launcher selects `active`; routine updates are fully unpacked and
-validated into the inactive slot before the launcher changes that one symlink.
-The application accepts a newly selected slot only after it reaches the normal
-measurement-started milestone. Failure before acceptance causes the next
-launcher invocation to restore `previous`.
+The physical p4 partition is created to the end of the actual card by
+`write-sd-card.sh`. The generated `sdcard.img` contains a small seed p4 and
+is mainly useful for inspection.
 
-Routine update bundles use format 3. Bundle versions must be strictly newer than the active slot; equal-version installs and downgrades are rejected. They contain only slot-relative release
-files, SHA-256 for every payload and, for production, an Ed25519 signature over
-the exact manifest. Platform/kernel/DTB/bootloader changes remain full-image
-work and are deliberately outside the routine updater.
+Above the mount layer the Application sees stable paths:
 
-Development images default to an explicit `unsigned-development` policy.
-To make an image require signatures, provide a public key:
+```text
+/opt/nextgen/platform/         immutable platform helpers/assets
+/opt/nextgen/common/share/     immutable shared assets
+/opt/nextgen/factory/<product> immutable factory Application fallback
+
+/opt/nextgen/app               bind -> /persist/app
+/opt/nextgen/data              bind -> /persist/data
+/opt/nextgen/state             bind -> /persist/state
+/opt/nextgen/common/state      bind -> /persist/common-state
+```
+
+The persistent Application realm is image based:
+
+```text
+/persist/app/<product>/
+  slotA.sqfs
+  slotA.meta
+  slotB.sqfs
+  slotB.meta
+  active/                      runtime mount point
+```
+
+The selected `.sqfs` is hash-validated and mounted read-only at
+`active/`. The immutable system image also contains a factory Application
+directory which is the final recovery anchor when persistent slot state is
+missing or corrupt.
+
+Mutable ownership is deliberately separated:
+
+- settings, calibration, FTP queue and user/imported templates live in
+  `/persist/data/<product>/`;
+- the live HPD database is independently managed persistent content;
+- the Application image carries only a known-compatible fallback HPD copy;
+- certified/built-in templates are release-owned and live in the Application
+  image, while user templates persist across releases;
+- service audit/crash/update state live in `/persist/state`;
+- SSH keys, NetworkManager/D-Bus state and RNG seed live below
+  `/persist/os`.
+
+Routine Application updates use format 4 and contain one immutable SquashFS
+image plus signed metadata. The accepted image is never modified in place.
+A candidate is written to the inactive slot, fully hashed and mounted for
+validation, then marked pending. Acceptance happens only after the new
+Application reaches the normal measurement-started milestone; failure before
+that causes rollback to the previous accepted image.
+
+The platform ABI is currently `1` and is checked by both installer and
+launcher.
+
+### Building the first RO SD image
+
+The matching prototype branches are:
+
+```text
+Application  chatgpt/ro-root-image-slots
+Buildroot    chatgpt/ro-root-image-slots
+Linux 6.18  chatgpt/ro-root-image-slots
+U-Boot       chatgpt/ro-root-image-slots
+AT91Bootstrap existing fast-boot build
+```
+
+Rebuild Linux 6.18 from the RO branch first. Buildroot refuses to emit the RO
+image unless the selected external kernel has these built in:
+
+```text
+CONFIG_BLK_DEV_LOOP=y
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_LZO=y
+```
+
+Rebuild the matching Application, then from Buildroot run:
 
 ```sh
-NEXTGEN_UPDATE_PUBLIC_KEY=/secure/update-public.pem \
-NEXTGEN_REQUIRE_SIGNED_UPDATES=1 \
-    ./build-nextgen-image.sh <profile>
+./build-nextgen-image.sh 6.18-ro sound
+# or:
+./build-nextgen-image.sh 6.18-ro vibra
 ```
 
-The corresponding private key stays off the meter and out of the repositories.
-The application release tool accepts it through
-`NEXTGEN_UPDATE_SIGNING_KEY` or `--signing-key`.
+The important outputs are:
 
-After Buildroot stages the root filesystem,
-`board/castle/nextgen/verify-target-layout.sh` checks the complete application
-layout, slot metadata, helpers, fonts and signing policy. A bad layout therefore
-fails the image build rather than producing a card image with a latent startup
-failure.
+```text
+output-nextgen-sound/images/boot.vfat
+output-nextgen-sound/images/rootfs.squashfs
+output-nextgen-sound/images/persist.ext4
+output-nextgen-sound/images/sdcard.img
+output-nextgen-sound/images/write-sd-card.sh
+```
+
+The RO post-build/post-image checks deliberately fail the build for stale
+Application binaries, wrong storage ownership, missing factory content,
+missing HPD/template fallbacks, invalid helper scripts or a kernel without the
+required built-in filesystem support.
+
+Development images retain the explicit `unsigned-development` update policy.
+A production image can require Ed25519-signed Application images by supplying
+the update public key in the normal way.
 
 
 ## Linux 6.18 NAND-root timing profile
