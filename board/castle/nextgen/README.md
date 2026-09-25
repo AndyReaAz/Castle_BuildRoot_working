@@ -279,3 +279,58 @@ fixed MTD number.
 The timing profile uses the normal preemptible Linux 6.18 kernel and otherwise
 retains the same runtime policy as the `6.18` image. Switching back to the
 normal SD environment returns the meter to SD-root operation.
+
+
+## Production NOR + SPI-NAND boot profile
+
+The `6.18-flash` profile builds the production storage chain without an SD-card
+dependency:
+
+```text
+SAMA5D2 ROM
+  -> SPI NOR: AT91Bootstrap
+  -> SPI NOR: U-Boot
+  -> SPI-NAND "boot" UBI partition
+       static volume "device-tree"
+       static volume "kernel"
+  -> SPI-NAND "rootfs" UBI partition
+       volume "rootfs"
+```
+
+The SPI-NAND layout is deliberately split at `0x00880000`:
+
+```text
+0x00000000-0x0087ffff   boot    8.5 MiB / 68 eraseblocks
+0x00880000-0x0887ffff   rootfs  128 MiB
+remainder               spare
+```
+
+The boot partition is a separate small UBI device so U-Boot does not have to
+attach and scan the 128 MiB rootfs device just to obtain the kernel. Both boot
+objects are static UBI volumes. Their volume metadata records the exact
+`used_bytes`, so `ubi read` with no explicit size loads only the real DTB or
+kernel length rather than the whole reserved partition. Static-volume CRC and
+UBI bad-block handling also apply to the boot objects.
+
+Build the prerequisites and image with:
+
+```sh
+cd ../at91bootstrap
+./build-fast.sh rebuild nor
+
+cd ../u-boot
+./build-fast.sh rebuild flash
+
+cd ../Castle_BuildRoot_working
+./build-nextgen-image.sh 6.18-flash sound
+```
+
+The flash profile emits `nor.img`, `boot.ubi`, `rootfs.ubi` and
+`nextgen-flash-manifest.sha256`. The 2 MiB `nor.img` contains the
+AT91Bootstrap image, U-Boot, its exact-length trailer at `0x13fff0`, and the
+two redundant 16 KiB U-Boot environment payloads in the 64 KiB erase sectors at
+`0x140000` and `0x150000`.
+
+The UBI images are intended to be installed with UBI-aware tooling such as
+`ubiformat` rather than raw NAND writes, so factory bad blocks are handled
+when the image is installed.
