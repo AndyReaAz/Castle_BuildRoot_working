@@ -163,6 +163,15 @@ rm -f "$DATA_IMAGE" "$BINARIES_DIR/sdcard.img"
 truncate -s "$DATA_IMAGE_SIZE" "$DATA_IMAGE"
 "$HOST_DIR/sbin/mkfs.ext4" -F -L data -m 0 "$DATA_IMAGE" >/dev/null
 
+# The RO-root profile reuses the shared boot FAT and data seed, then the
+# dedicated post-image-ro hook builds persist.ext4 and the four-partition card.
+# Do not generate a throwaway legacy card/manifest/writer first.
+if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "ro-persist-v1" ]; then
+    echo "NextGen boot FAT image: $BOOT_IMAGE"
+    echo "NextGen data seed:      $DATA_IMAGE"
+    exit 0
+fi
+
 "$BUILDROOT_DIR/support/scripts/genimage.sh" -c "$SCRIPT_DIR/genimage.cfg"
 
 (
