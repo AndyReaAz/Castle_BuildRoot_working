@@ -356,12 +356,28 @@ build_product()
     fi
 
     if [ "$PROFILE" = "6.18-flash" ]; then
-        for artifact in boot.ubi rootfs.ubi nor.img nextgen-flash-manifest.sha256; do
+        for artifact in \
+            boot.ubi rootfs.ubi \
+            nor-at91bootstrap.bin nor-uboot.bin nor-uboot-env.bin nor.img \
+            program-nextgen-flash.sh nextgen-flash-manifest.sha256
+        do
             [ -f "$out/images/$artifact" ] || {
                 echo "error: flash profile did not produce $out/images/$artifact" >&2
                 exit 1
             }
         done
+        [ "$(wc -c < "$out/images/nor-at91bootstrap.bin")" -eq $((0x8000)) ] || {
+            echo "error: AT91Bootstrap NOR partition image is not exactly 32 KiB" >&2
+            exit 1
+        }
+        [ "$(wc -c < "$out/images/nor-uboot.bin")" -eq $((0x138000)) ] || {
+            echo "error: U-Boot NOR partition image has the wrong size" >&2
+            exit 1
+        }
+        [ "$(wc -c < "$out/images/nor-uboot-env.bin")" -eq $((0x20000)) ] || {
+            echo "error: U-Boot environment NOR partition image is not exactly 128 KiB" >&2
+            exit 1
+        }
         [ "$(wc -c < "$out/images/nor.img")" -eq $((0x200000)) ] || {
             echo "error: NOR programming image is not exactly 2 MiB" >&2
             exit 1
