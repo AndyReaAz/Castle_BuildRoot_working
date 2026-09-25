@@ -3,20 +3,26 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 BUILDROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)"
-OUTPUT_DIR="$(CDPATH= cd -- "$BINARIES_DIR/.." && pwd)"
 
 : "${BINARIES_DIR:?Buildroot did not provide BINARIES_DIR}"
 : "${HOST_DIR:?Buildroot did not provide HOST_DIR}"
 
-PRODUCT="${NEXTGEN_PRODUCT:-sound}"
-case "$PRODUCT" in sound|vibra) ;; *)
-    echo "error: invalid NEXTGEN_PRODUCT '$PRODUCT'" >&2
+OUTPUT_DIR="$(CDPATH= cd -- "$BINARIES_DIR/.." && pwd)"
+PERSIST_SEED="$OUTPUT_DIR/nextgen-persist-seed"
+SLOT_SOURCE="$OUTPUT_DIR/nextgen-app-slot-source"
+
+STAGED_PRODUCT="$(sed -n 's/^product=//p' "$SLOT_SOURCE/bundle.info" 2>/dev/null || true)"
+case "$STAGED_PRODUCT" in sound|vibra) ;; *)
+    echo "error: invalid or missing staged Application product: '$STAGED_PRODUCT'" >&2
     exit 1
     ;;
 esac
 
-PERSIST_SEED="$OUTPUT_DIR/nextgen-persist-seed"
-SLOT_SOURCE="$OUTPUT_DIR/nextgen-app-slot-source"
+PRODUCT="${NEXTGEN_PRODUCT:-$STAGED_PRODUCT}"
+[ "$PRODUCT" = "$STAGED_PRODUCT" ] || {
+    echo "error: NEXTGEN_PRODUCT '$PRODUCT' disagrees with staged '$STAGED_PRODUCT'" >&2
+    exit 1
+}
 APP_DIR="$PERSIST_SEED/app/$PRODUCT"
 STATE_DIR="$PERSIST_SEED/state/$PRODUCT"
 SLOT_IMAGE="$APP_DIR/slotA.sqfs"
