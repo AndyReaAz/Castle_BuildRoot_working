@@ -163,7 +163,7 @@ Mutable ownership is deliberately separated:
 - certified/built-in templates are release-owned and live in the Application
   image, while user templates persist across releases;
 - service audit/crash/update state live in `/persist/state`;
-- SSH keys, NetworkManager/D-Bus state and RNG seed live below
+- SSH keys, NetworkManager/D-Bus/Chrony state and RNG seed live below
   `/persist/os`.
 
 Routine Application updates use format 4 and contain one immutable SquashFS
@@ -202,6 +202,7 @@ Buildroot refuses to emit the RO image unless the selected external kernel has
 these built in:
 
 ```text
+CONFIG_EXT4_FS=y
 CONFIG_BLK_DEV_LOOP=y
 CONFIG_SQUASHFS=y
 CONFIG_SQUASHFS_LZO=y
@@ -219,6 +220,7 @@ The important outputs are:
 
 ```text
 output-nextgen-sound/images/boot.vfat
+output-nextgen-sound/images/uboot.env
 output-nextgen-sound/images/rootfs.squashfs
 output-nextgen-sound/images/persist.ext4
 output-nextgen-sound/images/sdcard.img
