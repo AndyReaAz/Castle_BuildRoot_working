@@ -40,6 +40,7 @@ KERNEL_MODULES_ROOT=""
 EXPECTED_KERNEL_RELEASE=""
 BUILDROOT_DEFCONFIG="castle_nextgen_dev_defconfig"
 STORAGE_SCHEMA="legacy"
+STORAGE_BACKEND="legacy"
 
 case "$PROFILE" in
     baseline)
@@ -77,10 +78,28 @@ case "$PROFILE" in
         KERNEL_PROFILE="deferred"
         BUILDROOT_DEFCONFIG="castle_nextgen_ro_dev_defconfig"
         STORAGE_SCHEMA="ro-persist-v1"
+        STORAGE_BACKEND="sd-ext4"
         NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-sd/binaries/boot.bin"
         NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-fast/u-boot.bin"
         NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-fast/tools/mkenvimage"
         NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_ro.env"
+        export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
+        ;;
+    6.18-bringup)
+        # Factory/service image: SD boot and rootfs with framebuffer-console
+        # operator UI. It carries a separately-built production provision bundle
+        # but no measurement Application.
+        KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18-bringup"
+        KERNEL_MODULES_ROOT=""
+        EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
+        KERNEL_PROFILE="bringup"
+        BUILDROOT_DEFCONFIG="castle_nextgen_bringup_defconfig"
+        STORAGE_SCHEMA="bringup-sd-v1"
+        STORAGE_BACKEND="bringup-sd"
+        NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-sd/binaries/boot.bin"
+        NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-fast/u-boot.bin"
+        NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-fast/tools/mkenvimage"
+        NEXTGEN_UBOOT_ENV_TEXT="$ROOT/board/castle/nextgen/uboot-bringup.env"
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     6.18-nand)
@@ -97,14 +116,17 @@ case "$PROFILE" in
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     6.18-flash)
-        # Production flash chain:
-        # ROM -> AT91Bootstrap (NOR) -> U-Boot (NOR) -> boot UBI (SPI-NAND)
-        # -> rootfs UBI (SPI-NAND).
+        # Production no-SD image. NOR contains bootstrap/U-Boot; the small NAND
+        # boot UBI contains kernel+DTB; the 128 MiB NAND rootfs UBI contains the
+        # same immutable SquashFS system and writable persist tree as the SD
+        # ro-persist-v1 image.
         KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
         KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
         EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
         KERNEL_PROFILE="deferred"
-        STORAGE_SCHEMA="flash-ubi-v1"
+        BUILDROOT_DEFCONFIG="castle_nextgen_ro_dev_defconfig"
+        STORAGE_SCHEMA="ro-persist-v1"
+        STORAGE_BACKEND="nand-ubi"
         NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-nor/binaries/boot.bin"
         NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-flash/u-boot.bin"
         NEXTGEN_UBOOT_TRAILER="$WORKSPACE/u-boot/build-flash/u-boot.nor-trailer"
@@ -125,7 +147,7 @@ case "$PROFILE" in
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     *)
-        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-ro|6.18-nand|6.18-flash|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
+        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-ro|6.18-bringup|6.18-nand|6.18-flash|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
         exit 2
         ;;
 esac
