@@ -64,6 +64,12 @@ hash_file()
     sha256sum "$1" | awk '{print $1}'
 }
 
+is_mounted()
+{
+    target="$1"
+    awk -v p="$target" '$2 == p { found = 1 } END { exit found ? 0 : 1 }' /proc/mounts
+}
+
 verify_readback()
 {
     dev="$1"
@@ -215,18 +221,18 @@ verify_root_ubi()
     fi
 
     mount -t ubifs "$persistvol" "$persist_mount" || rc=1
-    if [ "$rc" -eq 0 ] && mountpoint -q "$persist_mount"; then
+    if [ "$rc" -eq 0 ] && is_mounted "$persist_mount"; then
         [ -s "$persist_mount/app/$product/slotA.sqfs" ] || rc=1
         [ -s "$persist_mount/app/$product/slotA.meta" ] || rc=1
         accepted="$(cat "$persist_mount/state/$product/accepted" 2>/dev/null || true)"
         case "$accepted" in
-            "slotA "*) ;;
+            slotA\ *) ;;
             *) rc=1 ;;
         esac
     fi
 
-    mountpoint -q "$persist_mount" && umount "$persist_mount" || true
-    mountpoint -q "$system_mount" && umount "$system_mount" || true
+    is_mounted "$persist_mount" && umount "$persist_mount" || true
+    is_mounted "$system_mount" && umount "$system_mount" || true
     ubiblock --remove "$systemvol" >/dev/null 2>&1 || rc=1
     detach_if_attached "$rootdev"
 
