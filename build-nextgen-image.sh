@@ -147,6 +147,25 @@ if [ -n "$KERNEL_MODULES_ROOT" ]; then
     }
 fi
 
+if [ "$PROFILE" = "6.18-ro" ]; then
+    [ -r "$KERNEL_BUILD_DIR/.config" ] || {
+        echo "error: RO-root kernel has no .config: $KERNEL_BUILD_DIR/.config" >&2
+        exit 1
+    }
+    for sym in BLK_DEV_LOOP SQUASHFS SQUASHFS_LZO; do
+        grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
+            echo "error: RO-root kernel requires CONFIG_${sym}=y" >&2
+            echo "       rebuild linux-6.18 from chatgpt/ro-root-image-slots first" >&2
+            exit 1
+        }
+    done
+    [ -f "$NEXTGEN_UBOOT_ENV_TEXT" ] || {
+        echo "error: RO-root U-Boot environment is missing:" >&2
+        echo "       $NEXTGEN_UBOOT_ENV_TEXT" >&2
+        exit 1
+    }
+fi
+
 # Reapply the project defconfig on every profile build so changes to
 # module loading and other image policy cannot be hidden by a stale O= tree.
 build_product()
