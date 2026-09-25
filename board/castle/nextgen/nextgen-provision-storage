@@ -23,10 +23,15 @@ fail()
     return 1
 }
 
-mtd_by_label()
+mtd_line()
 {
     label="$1"
-    line="$(grep " \"$label\"$" /proc/mtd 2>/dev/null | head -n 1)"
+    grep " \"$label\"$" /proc/mtd 2>/dev/null | head -n 1
+}
+
+mtd_by_label()
+{
+    line="$(mtd_line "$1")"
     [ -n "$line" ] || return 1
     name="${line%%:*}"
     printf '/dev/%s\n' "$name"
@@ -34,8 +39,7 @@ mtd_by_label()
 
 mtd_size_hex()
 {
-    label="$1"
-    line="$(grep " \"$label\"$" /proc/mtd 2>/dev/null | head -n 1)"
+    line="$(mtd_line "$1")"
     [ -n "$line" ] || return 1
     set -- $line
     printf '%s\n' "$2"
@@ -87,6 +91,10 @@ find_ubi_for_mtd()
     mtdnum="${mtddev#/dev/mtd}"
     for p in /sys/class/ubi/ubi[0-9]*
     do
+        case "$(basename "$p")" in
+            ubi[0-9]*) ;;
+            *) continue ;;
+        esac
         [ -f "$p/mtd_num" ] || continue
         [ "$(cat "$p/mtd_num")" = "$mtdnum" ] || continue
         basename "$p"
@@ -95,42 +103,135 @@ find_ubi_for_mtd()
     return 1
 }
 
-verify_ubi_payload()
+find_ubi_volume()
+{
+    ubidev="$1"
+    wanted="$2"
+
+    for p in "/sys/class/ubi/$ubidev"_[0-9]*
+    do
+        [ -f "$p/name" ] || continue
+        [ "$(cat "$p/name")" = "$wanted" ] || continue
+        printf '/dev/%s\n' "$(basename "$p")"
+        return 0
+    done
+    return 1
+}
+
+ubi_data_bytes()
+{
+    volume="$1"
+    sys="/sys/class/ubi/$(basename "$volume")/data_bytes"
+    [ -r "$sys" ] || return 1
+    cat "$sys"
+}
+
+detach_if_attached()
+{
+    mtddev="$1"
+    ubidetach -p "$mtddev" >/dev/null 2>&1 || true
+}
+
+verify_boot_ubi()
+{
+    bootdev="$1"
+
+    ubiattach -p "$bootdev" >/dev/null || {
+        fail "could not attach programmed boot UBI"
+        return 1
+    }
+    ubidev="$(find_ubi_for_mtd "$bootdev")" || {
+        fail "could not identify attached boot UBI device"
+        detach_if_attached "$bootdev"
+        return 1
+    }
+
+    dtvol="$(find_ubi_volume "$ubidev" device-tree)" || {
+        fail "boot UBI has no device-tree volume"
+        detach_if_attached "$bootdev"
+        return 1
+    }
+    krnlvol="$(find_ubi_volume "$ubidev" kernel)" || {
+        fail "boot UBI has no kernel volume"
+        detach_if_attached "$bootdev"
+        return 1
+    }
+
+    dtbytes="$(ubi_data_bytes "$dtvol" 2>/dev/null || echo 0)"
+    krnlbytes="$(ubi_data_bytes "$krnlvol" 2>/dev/null || echo 0)"
+    [ "$dtbytes" -gt 0 ] && [ "$krnlbytes" -gt 0 ] || {
+        fail "boot UBI contains empty static volume"
+        detach_if_attached "$bootdev"
+        return 1
+    }
+
+    detach_if_attached "$bootdev"
+}
+
+verify_root_ubi()
 {
     rootdev="$1"
-    mountpoint="$TMP/rootfs"
+    product="$2"
+    system_mount="$TMP/system"
+    persist_mount="$TMP/persist"
 
     ubiattach -p "$rootdev" >/dev/null || {
         fail "could not attach programmed rootfs UBI"
         return 1
     }
-
     ubidev="$(find_ubi_for_mtd "$rootdev")" || {
         fail "could not identify attached rootfs UBI device"
-        ubidetach -p "$rootdev" >/dev/null 2>&1 || true
+        detach_if_attached "$rootdev"
         return 1
     }
 
-    mkdir -p "$mountpoint"
-    mount -t ubifs "$ubidev:rootfs" "$mountpoint" || {
-        fail "could not mount programmed rootfs volume"
-        ubidetach -p "$rootdev" >/dev/null 2>&1 || true
+    systemvol="$(find_ubi_volume "$ubidev" system)" || {
+        fail "rootfs UBI has no system volume"
+        detach_if_attached "$rootdev"
+        return 1
+    }
+    persistvol="$(find_ubi_volume "$ubidev" persist)" || {
+        fail "rootfs UBI has no persist volume"
+        detach_if_attached "$rootdev"
         return 1
     }
 
+    blockdev="/dev/ubiblock${systemvol#/dev/ubi}"
+    ubiblock --create "$systemvol" >/dev/null || {
+        fail "could not create ubiblock for system volume"
+        detach_if_attached "$rootdev"
+        return 1
+    }
+
+    mkdir -p "$system_mount" "$persist_mount"
     rc=0
-    [ -s "$mountpoint/boot/zImage" ] || rc=1
-    [ -s "$mountpoint/boot/nextgen.dtb" ] || rc=1
-    [ -r "$mountpoint/etc/nextgen-storage-schema" ] || rc=1
+
+    mount -t squashfs -o ro "$blockdev" "$system_mount" || rc=1
     if [ "$rc" -eq 0 ]; then
-        [ "$(cat "$mountpoint/etc/nextgen-storage-schema")" = "flash-ubi-v1" ] || rc=1
+        [ "$(cat "$system_mount/etc/nextgen-storage-schema" 2>/dev/null || true)" = "ro-persist-v1" ] || rc=1
+        [ "$(cat "$system_mount/etc/nextgen-storage-backend" 2>/dev/null || true)" = "nand-ubi" ] || rc=1
+        [ -f "$system_mount/etc/nextgen-sd-data-only" ] || rc=1
+        [ "$(cat "$system_mount/etc/nextgen-product" 2>/dev/null || true)" = "$product" ] || rc=1
     fi
 
-    umount "$mountpoint" || rc=1
-    ubidetach -p "$rootdev" >/dev/null || rc=1
+    mount -t ubifs "$persistvol" "$persist_mount" || rc=1
+    if [ "$rc" -eq 0 ] && mountpoint -q "$persist_mount"; then
+        [ -s "$persist_mount/app/$product/slotA.sqfs" ] || rc=1
+        [ -s "$persist_mount/app/$product/slotA.meta" ] || rc=1
+        accepted="$(cat "$persist_mount/state/$product/accepted" 2>/dev/null || true)"
+        case "$accepted" in
+            "slotA "*) ;;
+            *) rc=1 ;;
+        esac
+    fi
+
+    mountpoint -q "$persist_mount" && umount "$persist_mount" || true
+    mountpoint -q "$system_mount" && umount "$system_mount" || true
+    ubiblock --remove "$systemvol" >/dev/null 2>&1 || rc=1
+    detach_if_attached "$rootdev"
 
     [ "$rc" -eq 0 ] || {
-        fail "programmed UBI payload failed content verification"
+        fail "programmed RO system/persist UBI failed content verification"
         return 1
     }
 }
@@ -142,7 +243,7 @@ main()
         return $?
     }
 
-    for cmd in sha256sum awk grep head wc tr flash_erase mtd_debug ubiformat ubiattach ubidetach mount umount
+    for cmd in         sha256sum awk grep head wc tr         flash_erase mtd_debug ubiformat ubiattach ubidetach ubiblock         mount umount mountpoint
     do
         command -v "$cmd" >/dev/null 2>&1 || {
             fail "required command is unavailable: $cmd"
@@ -168,14 +269,28 @@ main()
     }
 
     . "$BUNDLE/layout.env"
-    [ "${NEXTGEN_PROVISION_BUNDLE:-}" = "1" ] || {
-        fail "invalid provisioning bundle layout metadata"
+    [ "${NEXTGEN_PROVISION_BUNDLE:-}" = "2" ] || {
+        fail "invalid provisioning bundle format"
         return 1
     }
+    [ "${NEXTGEN_STORAGE_SCHEMA:-}" = "ro-persist-v1" ] || {
+        fail "unexpected production storage schema"
+        return 1
+    }
+    [ "${NEXTGEN_STORAGE_BACKEND:-}" = "nand-ubi" ] || {
+        fail "unexpected production storage backend"
+        return 1
+    }
+    case "${NEXTGEN_PRODUCT:-}" in sound|vibra) ;; *)
+        fail "invalid production product"
+        return 1
+        ;;
+    esac
 
     require_mtd_size at91bootstrap "$((0x00008000))" || return 1
     require_mtd_size uboot "$((0x00138000))" || return 1
     require_mtd_size uboot-env "$((0x00020000))" || return 1
+    require_mtd_size boot "$((0x00880000))" || return 1
     require_mtd_size rootfs "$((0x08000000))" || return 1
 
     [ "${NOR_UBOOT_TRAILER_OFFSET:-}" = "0x00137ff0" ] || {
@@ -186,24 +301,31 @@ main()
     at91dev="$(mtd_by_label at91bootstrap)" || return 1
     ubootdev="$(mtd_by_label uboot)" || return 1
     envdev="$(mtd_by_label uboot-env)" || return 1
+    bootdev="$(mtd_by_label boot)" || return 1
     rootdev="$(mtd_by_label rootfs)" || return 1
 
     rm -rf "$TMP"
     mkdir -p "$TMP"
 
-    # Program and verify NAND first. Until NOR is changed, the existing boot
-    # chain remains intact and the service SD card remains bootable.
-    log "formatting production NAND rootfs UBI"
-    ubidetach -p "$rootdev" >/dev/null 2>&1 || true
+    # Program and prove both NAND UBI devices first. Until NOR is changed the
+    # existing boot chain and the service SD card remain recoverable.
+    log "formatting production NAND system/persist UBI"
+    detach_if_attached "$rootdev"
     ubiformat "$rootdev" -y -f "$BUNDLE/rootfs.ubi" || {
         fail "ubiformat failed for rootfs"
         return 1
     }
-    verify_ubi_payload "$rootdev" || return 1
+    verify_root_ubi "$rootdev" "$NEXTGEN_PRODUCT" || return 1
 
-    # Replace U-Boot before bootstrap. The production U-Boot is deliberately
-    # <= 0xA0000 bytes so the old fixed-window bootstrap can still load it if
-    # power disappears before the new bootstrap is written.
+    log "formatting production NAND boot UBI"
+    detach_if_attached "$bootdev"
+    ubiformat "$bootdev" -y -f "$BUNDLE/boot.ubi" || {
+        fail "ubiformat failed for boot"
+        return 1
+    }
+    verify_boot_ubi "$bootdev" || return 1
+
+    # Replace U-Boot while the old fixed-window bootstrap can still load it.
     log "programming NOR U-Boot"
     flash_erase "$ubootdev" 0 0 >/dev/null || {
         fail "could not erase U-Boot partition"
@@ -225,15 +347,16 @@ main()
     verify_readback "$ubootdev" 0 "$BUNDLE/u-boot.bin" u-boot || return 1
     verify_readback "$ubootdev" "$UBOOT_TRAILER_OFFSET" "$BUNDLE/u-boot.trailer" u-boot-trailer || return 1
 
-    # Remove any legacy or test environment. The production defaults are
-    # compiled into U-Boot; first saveenv will establish redundant copies.
+    # Remove legacy/test environment. Production defaults are compiled into
+    # U-Boot; factory identity can establish redundant copies afterwards.
     log "erasing NOR U-Boot environment"
     flash_erase "$envdev" 0 0 >/dev/null || {
         fail "could not erase U-Boot environment"
         return 1
     }
 
-    # Bootstrap is last: after this point ROM boots the new NOR chain.
+    # Bootstrap is last: only after NAND and U-Boot are proved do we switch ROM
+    # to the trailer-aware/fuse-guarded production bootstrap.
     log "programming NOR AT91Bootstrap"
     flash_erase "$at91dev" 0 0 >/dev/null || {
         fail "could not erase AT91Bootstrap partition"
