@@ -44,6 +44,7 @@ for script in \
     "$SCRIPT_DIR/rootfs-overlay/etc/init.d/sshd" \
     "$SCRIPT_DIR/nextgen-update-install" \
     "$SCRIPT_DIR/nextgen-update-accept" \
+    "$SCRIPT_DIR/program-nextgen-flash.sh" \
     "$SCRIPT_DIR/verify-target-layout.sh"
 do
     /bin/sh -n "$script" || {
