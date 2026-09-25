@@ -149,7 +149,7 @@ fi
 # legacy directory; never copy executables/platform helpers into data/.
 LEGACY_EXEC="$TARGET_DIR/root/Exec"
 if [ -d "$LEGACY_EXEC" ]; then
-    for name in SettingsJSON0.dat SettingsJSON1.dat CalFile.dat FacCalFile.dat FTPQueue.dat; do
+    for name in Settings0.json Settings1.json CalFile.dat FacCalFile.dat FTPQueue.dat; do
         [ ! -f "$LEGACY_EXEC/$name" ] ||
             install -m 0644 "$LEGACY_EXEC/$name" "$DATA_REALM/$name"
     done
