@@ -66,6 +66,19 @@ case "$PROFILE" in
         NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-fast/tools/mkenvimage"
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE
         ;;
+    6.18-nand)
+        # Timing profile: keep bootstrap/U-Boot/kernel/DTB on SD and move only
+        # the Linux root filesystem to the SPI-NAND rootfs UBI volume.
+        KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
+        KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
+        EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
+        KERNEL_PROFILE="deferred"
+        NEXTGEN_AT91BOOTSTRAP="$WORKSPACE/at91bootstrap/build-sd/binaries/boot.bin"
+        NEXTGEN_UBOOT_IMAGE="$WORKSPACE/u-boot/build-fast/u-boot.bin"
+        NEXTGEN_MKENVIMAGE="$WORKSPACE/u-boot/build-fast/tools/mkenvimage"
+        NEXTGEN_UBOOT_ENV_TEXT="$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_nand.env"
+        export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
+        ;;
     6.18-diag)
         KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18"
         KERNEL_MODULES_ROOT="$WORKSPACE/staging/linux-6.18-modules/lib/modules"
@@ -78,7 +91,7 @@ case "$PROFILE" in
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     *)
-        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
+        echo "Usage: $0 [baseline|deferred|deferred-diag|6.18|6.18-nand|6.18-diag] [sound|vibra|both] [make-target ...]" >&2
         exit 2
         ;;
 esac
