@@ -8,7 +8,7 @@ if grep -Eq '(^|[^[:alnum:]_])jq([^[:alnum:]_]|$)' "$USB_CONTROL"; then
     echo "FAIL: usbcontrol.sh still has a jq runtime dependency" >&2
     exit 1
 fi
-if grep -Eq 'SettingsJSON|LEGACY_SETTINGS|tail -c \+5|ModelType|Manufacturer[^N]' "$USB_CONTROL"; then
+if grep -Eq 'SettingsJSON|LEGACY_SETTINGS|tail -c \+5|ModelType|settings_legacy|read_legacy' "$USB_CONTROL"; then
     echo "FAIL: usbcontrol.sh still contains legacy settings/model decoding" >&2
     exit 1
 fi
