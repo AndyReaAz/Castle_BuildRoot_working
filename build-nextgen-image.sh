@@ -166,6 +166,47 @@ if [ "$PROFILE" = "6.18-flash" ]; then
         echo "error: U-Boot NOR trailer must be exactly 16 bytes" >&2
         exit 1
     }
+
+    for source in \
+        "$WORKSPACE/u-boot/build-fast.sh" \
+        "$WORKSPACE/u-boot/configs/sama5d27_nextgen_flash_defconfig" \
+        "$WORKSPACE/u-boot/arch/arm/dts/sama5d27_nextgen.dts" \
+        "$WORKSPACE/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen_flash.env"
+    do
+        [ ! "$source" -nt "$NEXTGEN_UBOOT_IMAGE" ] || {
+            echo "error: flash U-Boot artifact is stale: $NEXTGEN_UBOOT_IMAGE" >&2
+            echo "       newer source: $source" >&2
+            echo "       rebuild with: ../u-boot/build-fast.sh rebuild flash" >&2
+            exit 1
+        }
+    done
+
+    for source in \
+        "$WORKSPACE/at91bootstrap/build-fast.sh" \
+        "$WORKSPACE/at91bootstrap/configs/nextgen_nor_uboot_defconfig" \
+        "$WORKSPACE/at91bootstrap/driver/spi_flash.c"
+    do
+        [ ! "$source" -nt "$NEXTGEN_AT91BOOTSTRAP" ] || {
+            echo "error: NOR AT91Bootstrap artifact is stale: $NEXTGEN_AT91BOOTSTRAP" >&2
+            echo "       newer source: $source" >&2
+            echo "       rebuild with: ../at91bootstrap/build-fast.sh rebuild nor" >&2
+            exit 1
+        }
+    done
+
+    KERNEL_DTS="$WORKSPACE/linux-6.18/arch/arm/boot/dts/microchip/nextgen.dts"
+    KERNEL_DTB="$KERNEL_BUILD_DIR/arch/arm/boot/dts/microchip/nextgen.dtb"
+    [ ! "$KERNEL_DTS" -nt "$KERNEL_DTB" ] || {
+        echo "error: flash profile DTB is stale: $KERNEL_DTB" >&2
+        echo "       newer source: $KERNEL_DTS" >&2
+        echo "       rebuild the linux-6.18 kernel/DTBs first" >&2
+        exit 1
+    }
+
+    [ ! "$NEXTGEN_UBOOT_IMAGE" -nt "$NEXTGEN_UBOOT_TRAILER" ] || {
+        echo "error: U-Boot NOR trailer is older than u-boot.bin; rebuild the flash profile" >&2
+        exit 1
+    }
 fi
 
 if [ -n "$KERNEL_MODULES_ROOT" ]; then
