@@ -64,6 +64,11 @@ for helper in nextgen-update-install nextgen-update-accept usbcontrol.sh fwenv.s
     [ -x "$BIN/$helper" ] || fail "platform helper $helper is missing"
 done
 
+[ -x "$TARGET_DIR/etc/init.d/sshd" ] ||
+    fail "race-safe engineering sshd wrapper is missing"
+[ ! -e "$TARGET_DIR/etc/init.d/S50sshd" ] ||
+    fail "stock S50sshd unexpectedly remains on the boot path"
+
 # These were historical development conveniences, not runtime dependencies.
 # Keep the finished image honest: usbcontrol.sh must remain self-contained
 # rather than silently depending on jq being present.
