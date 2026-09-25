@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+# Destructive NOR/NAND writes are deliberately not armed until the production
+# no-SD AT91Bootstrap/U-Boot/NAND-UBI boot chain is defined and validated.
+# Exit 64 is a deliberate "not armed" state; the operator UI displays yellow
+# and can never display the green production-pass screen.
+echo "BRINGUP: production storage programming is not armed in this build" >&2
+exit 64

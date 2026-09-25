@@ -70,6 +70,18 @@ case "$STORAGE_SCHEMA" in
             }
         done
         ;;
+    bringup-sd-v1)
+        [ -r "$KERNEL_BUILD_DIR/.config" ] || {
+            echo "error: bring-up profile has no external kernel .config: $KERNEL_BUILD_DIR/.config" >&2
+            exit 1
+        }
+        for sym in MTD_SPI_NOR MTD_SPI_NAND DRM_FBDEV_EMULATION FRAMEBUFFER_CONSOLE; do
+            grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
+                echo "error: bring-up profile requires CONFIG_${sym}=y in $KERNEL_BUILD_DIR/.config" >&2
+                exit 1
+            }
+        done
+        ;;
     *)
         echo "error: unknown NextGen storage schema: $STORAGE_SCHEMA" >&2
         exit 1
@@ -84,9 +96,9 @@ esac
 case "$EXPECTED_KERNEL_RELEASE" in
     6.18.35-linux4microchip-2026.04.2+)
         case "$KERNEL_PROFILE" in
-            deferred|deferred-diag) ;;
+            deferred|deferred-diag|bringup) ;;
             *)
-                echo "error: Linux 6.18 NextGen images require deferred or deferred-diag policy" >&2
+                echo "error: Linux 6.18 NextGen images require deferred, deferred-diag or bringup policy" >&2
                 echo "       use ./build-nextgen-image.sh 6.18 [sound|vibra|both]" >&2
                 exit 1
                 ;;

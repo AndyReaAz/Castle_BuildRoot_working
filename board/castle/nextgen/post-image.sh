@@ -72,6 +72,37 @@ UBOOT_ENV_SOURCE="${NEXTGEN_UBOOT_ENV:-}"
 UBOOT_ENV_TEXT="${NEXTGEN_UBOOT_ENV_TEXT:-$WORKSPACE_DIR/u-boot/board/atmel/sama5d27_nextgen/sama5d27_nextgen.env}"
 MKENVIMAGE="${NEXTGEN_MKENVIMAGE:-$WORKSPACE_DIR/u-boot/build-fast/tools/mkenvimage}"
 
+if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "bringup-sd-v1" ]; then
+    [ -z "$UBOOT_ENV_SOURCE" ] || {
+        echo "error: bring-up image refuses a prebuilt NEXTGEN_UBOOT_ENV override" >&2
+        exit 1
+    }
+    [ -f "$UBOOT_ENV_TEXT" ] || {
+        echo "error: bring-up U-Boot environment source is missing: $UBOOT_ENV_TEXT" >&2
+        exit 1
+    }
+    grep -q 'console=ttyS0,576000' "$UBOOT_ENV_TEXT" || {
+        echo "error: bring-up U-Boot environment must retain the serial console" >&2
+        exit 1
+    }
+    if grep -q 'console=tty0' "$UBOOT_ENV_TEXT"; then
+        echo "error: bring-up U-Boot environment must not make the LCD a kernel console" >&2
+        exit 1
+    fi
+    grep -q 'root=/dev/mmcblk0p2 rw rootwait' "$UBOOT_ENV_TEXT" || {
+        echo "error: bring-up U-Boot environment must remain SD-rooted" >&2
+        exit 1
+    }
+    grep -q 'vt.global_cursor_default=0' "$UBOOT_ENV_TEXT" || {
+        echo "error: bring-up U-Boot environment must suppress the VT cursor" >&2
+        exit 1
+    }
+    grep -q 'nextgen.env=bringup' "$UBOOT_ENV_TEXT" || {
+        echo "error: bring-up U-Boot environment is missing nextgen.env=bringup" >&2
+        exit 1
+    }
+fi
+
 if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "ro-persist-v1" ]; then
     [ -z "$UBOOT_ENV_SOURCE" ] || {
         echo "error: RO-root image refuses a prebuilt NEXTGEN_UBOOT_ENV override" >&2
