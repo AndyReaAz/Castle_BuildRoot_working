@@ -283,6 +283,9 @@ EOF
         exit 1
     }
 
+    install -m 0755 "$SCRIPT_DIR/program-nextgen-flash.sh" \
+        "$BINARIES_DIR/program-nextgen-flash.sh"
+
     (
         cd "$BINARIES_DIR"
         sha256sum boot.bin u-boot.bin u-boot.nor-trailer \
