@@ -14,27 +14,61 @@ case "$PRODUCT" in sound|vibra) ;; *)
 esac
 rm -f "$READY"
 
-awk -v p="$PERSIST" '
-    $2 == p {
-        found = 1
-        n = split($4, opts, ",")
-        for (i = 1; i <= n; i++)
-            if (opts[i] == "rw") writable = 1
-    }
-    END { exit (found && writable) ? 0 : 1 }
-' /proc/mounts || {
-    echo "NextGen persist: $PERSIST is not mounted read-write" >&2
-    exit 1
-}
-
-mkdir -p     "$PERSIST/app/$PRODUCT/active"     "$PERSIST/data/$PRODUCT/Templates"     "$PERSIST/state/$PRODUCT"     "$PERSIST/state/platform"     "$PERSIST/common-state"     "$PERSIST/os/NetworkManager/system-connections"     "$PERSIST/os/NetworkManager/state"     "$PERSIST/os/dbus"     "$PERSIST/os/chrony"     "$PERSIST/os/ssh"     "$PERSIST/os/seedrng"
-
-mkdir -p     /var/lib/dbus     /var/lib/NetworkManager     /var/lib/chrony     /var/log     /var/cache     /var/tmp
-
 is_mounted()
 {
     awk -v p="$1" '$2 == p { found = 1 } END { exit found ? 0 : 1 }' /proc/mounts
 }
+
+persist_is_rw()
+{
+    awk -v p="$PERSIST" '
+        $2 == p {
+            found = 1
+            n = split($4, opts, ",")
+            for (i = 1; i <= n; i++)
+                if (opts[i] == "rw") writable = 1
+        }
+        END { exit (found && writable) ? 0 : 1 }
+    ' /proc/mounts
+}
+
+recover_persist()
+{
+    device="$(awk -v p="$PERSIST" '$2 == p { print $1; exit }' /etc/fstab)"
+    [ -n "$device" ] && [ -b "$device" ] || return 1
+    command -v e2fsck >/dev/null 2>&1 || return 1
+
+    # This runs before any /persist-backed bind mounts are established, so a
+    # failed/RO mount can still be safely detached for repair.
+    if is_mounted "$PERSIST"; then
+        umount "$PERSIST" || return 1
+    fi
+
+    rc=0
+    e2fsck -p "$device" || rc=$?
+    case "$rc" in
+        0|1) ;;
+        *)
+            echo "NextGen persist: e2fsck failed for $device (rc=$rc)" >&2
+            return 1
+            ;;
+    esac
+
+    mount "$PERSIST" || return 1
+    persist_is_rw
+}
+
+if ! persist_is_rw; then
+    echo "NextGen persist: initial $PERSIST mount unavailable; attempting repair" >&2
+    recover_persist || {
+        echo "NextGen persist: $PERSIST is not safely mounted read-write" >&2
+        exit 1
+    }
+fi
+
+mkdir -p     "$PERSIST/app/$PRODUCT/active"     "$PERSIST/data/$PRODUCT/Templates"     "$PERSIST/state/$PRODUCT"     "$PERSIST/state/platform"     "$PERSIST/common-state"     "$PERSIST/os/NetworkManager/system-connections"     "$PERSIST/os/NetworkManager/state"     "$PERSIST/os/dbus"     "$PERSIST/os/chrony"     "$PERSIST/os/ssh"     "$PERSIST/os/seedrng"
+
+mkdir -p     /var/lib/dbus     /var/lib/NetworkManager     /var/lib/chrony     /var/log     /var/cache     /var/tmp
 
 bind_one()
 {
