@@ -106,6 +106,54 @@ rm -f "$PERSIST_IMAGE"
     exit 1
 }
 
+UNSQUASHFS="$HOST_DIR/bin/unsquashfs"
+E2FSCK="$HOST_DIR/sbin/e2fsck"
+DEBUGFS="$HOST_DIR/sbin/debugfs"
+for tool in "$UNSQUASHFS" "$E2FSCK" "$DEBUGFS"; do
+    [ -x "$tool" ] || {
+        echo "error: RO image verification tool is missing: $tool" >&2
+        exit 1
+    }
+done
+
+# Verify the system image that will actually be written, not only TARGET_DIR.
+SYSTEM_SCHEMA="$("$UNSQUASHFS" -cat "$BINARIES_DIR/rootfs.squashfs"     etc/nextgen-storage-schema 2>/dev/null || true)"
+SYSTEM_ABI="$("$UNSQUASHFS" -cat "$BINARIES_DIR/rootfs.squashfs"     etc/nextgen-platform-abi 2>/dev/null || true)"
+[ "$SYSTEM_SCHEMA" = "ro-persist-v1" ] || {
+    echo "error: generated SquashFS has wrong storage schema: '$SYSTEM_SCHEMA'" >&2
+    exit 1
+}
+[ "$SYSTEM_ABI" = "1" ] || {
+    echo "error: generated SquashFS has wrong platform ABI: '$SYSTEM_ABI'" >&2
+    exit 1
+}
+
+# A freshly-created persist image must be internally consistent before it is
+# embedded in the card image. e2fsck -n never modifies the image.
+"$E2FSCK" -fn "$PERSIST_IMAGE" >/dev/null 2>&1 || {
+    rc=$?
+    # e2fsck bit 1 means errors corrected, which -n cannot do; any non-zero
+    # result is unexpected for this freshly-created image.
+    echo "error: generated persist.ext4 failed read-only fsck (rc=$rc)" >&2
+    exit 1
+}
+
+"$DEBUGFS" -R "stat /app/$PRODUCT/slotA.sqfs" "$PERSIST_IMAGE"     >/dev/null 2>&1 || {
+        echo "error: persist.ext4 has no slotA Application image" >&2
+        exit 1
+    }
+"$DEBUGFS" -R "stat /app/$PRODUCT/slotA.meta" "$PERSIST_IMAGE"     >/dev/null 2>&1 || {
+        echo "error: persist.ext4 has no slotA metadata" >&2
+        exit 1
+    }
+PERSIST_ACCEPTED="$("$DEBUGFS" -R "cat /state/$PRODUCT/accepted"     "$PERSIST_IMAGE" 2>/dev/null | tr -d '\r\n')"
+[ "$PERSIST_ACCEPTED" = "slotA $VERSION" ] || {
+    echo "error: persist.ext4 accepted state is '$PERSIST_ACCEPTED'" >&2
+    exit 1
+}
+
+echo "NextGen RO image verification: system + persist OK"
+
 # The raw image is useful for inspection.  For real removable media the
 # generated writer below is preferred because it extends p4 to the actual card
 # size instead of the fixed data.ext4 seed size.
