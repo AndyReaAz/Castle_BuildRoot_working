@@ -83,6 +83,28 @@ if [ "${NEXTGEN_STORAGE_SCHEMA:-legacy}" = "flash-ubi-v1" ]; then
         echo "error: U-Boot length trailer is not 16 bytes: $TRAILER_SOURCE" >&2
         exit 1
     }
+
+    set -- $(od -An -tu1 -N16 "$TRAILER_SOURCE")
+    [ "$1" -eq 78 ] && [ "$2" -eq 71 ] && [ "$3" -eq 85 ] && [ "$4" -eq 66 ] || {
+        echo "error: U-Boot length trailer has invalid NGUB magic" >&2
+        exit 1
+    }
+    TRAILER_LEN=$(( $5 | ($6 << 8) | ($7 << 16) | ($8 << 24) ))
+    TRAILER_INV=$(( $9 | ($10 << 8) | ($11 << 16) | ($12 << 24) ))
+    TRAILER_VER=$(( $13 | ($14 << 8) | ($15 << 16) | ($16 << 24) ))
+    [ "$TRAILER_LEN" -eq "$UBOOT_BYTES" ] || {
+        echo "error: U-Boot trailer length $TRAILER_LEN does not match u-boot.bin $UBOOT_BYTES" >&2
+        exit 1
+    }
+    [ $(( (TRAILER_LEN ^ TRAILER_INV) & 0xffffffff )) -eq $((0xffffffff)) ] || {
+        echo "error: U-Boot trailer length complement is invalid" >&2
+        exit 1
+    }
+    [ "$TRAILER_VER" -eq 1 ] || {
+        echo "error: unsupported U-Boot trailer version $TRAILER_VER" >&2
+        exit 1
+    }
+
     install -m 0644 "$TRAILER_SOURCE" "$BINARIES_DIR/u-boot.nor-trailer"
 fi
 
