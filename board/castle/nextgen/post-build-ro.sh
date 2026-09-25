@@ -113,6 +113,8 @@ tmpfs           /var/log    tmpfs    mode=0755,nosuid,nodev                     
 tmpfs           /var/cache  tmpfs    mode=0755,nosuid,nodev                         0 0
 tmpfs           /var/tmp    tmpfs    mode=1777,nosuid,nodev                         0 0
 sysfs           /sys        sysfs    defaults                                       0 0
+configfs        /sys/kernel/config configfs defaults                                 0 0
+debugfs         /sys/kernel/debug  debugfs  defaults                                 0 0
 /dev/mmcblk0p3  /persist    ext4     rw,noatime,nosuid,nodev,errors=remount-ro       0 2
 /dev/mmcblk0p1  /boot       vfat     defaults,noauto                                0 2
 EOF
