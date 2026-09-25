@@ -51,6 +51,9 @@ grep -qx 'format=4' "$SLOT_SOURCE/bundle.info" ||
     fail "initial accepted state missing"
 [ -d "$PERSIST_SEED/os/chrony" ] ||
     fail "persistent chrony state directory missing"
+for osdir in NetworkManager/system-connections NetworkManager/state dbus chrony ssh seedrng; do
+    [ -d "$PERSIST_SEED/os/$osdir" ] || fail "persistent OS state $osdir missing"
+done
 grep -q 'bind_one "\$PERSIST/os/chrony" /var/lib/chrony' "$ROOT/platform/bin/persist-init.sh" ||
     fail "chrony state is not rebound to persistent storage"
 
@@ -83,6 +86,8 @@ fi
 
 grep -q '^/dev/root[[:space:]]\+/[[:space:]]\+squashfs[[:space:]]\+ro'     "$TARGET_DIR/etc/fstab" || fail "root is not declared read-only SquashFS"
 grep -q '^/dev/mmcblk0p3[[:space:]]\+/persist[[:space:]]\+ext4'     "$TARGET_DIR/etc/fstab" || fail "SD persist partition is missing"
+! grep -q '^[^#].*[[:space:]]/sdcard[[:space:]]' "$TARGET_DIR/etc/fstab" ||
+    fail "/sdcard must remain Application-mounted for fsck/identity recovery"
 grep -q '/opt/nextgen/platform/bin/persist-init.sh' "$TARGET_DIR/etc/inittab" ||
     fail "persist init is not in sysinit"
 ! grep -q '^[^#].*-o remount,rw /$' "$TARGET_DIR/etc/inittab" ||
