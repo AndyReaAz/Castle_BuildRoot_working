@@ -76,6 +76,8 @@ case "$STORAGE_SCHEMA" in
             echo "error: flash profile has no external kernel .config: $KERNEL_BUILD_DIR/.config" >&2
             exit 1
         }
+
+        # Everything needed to reach and mount rootfs must be built in.
         for sym in SPI SPI_ATMEL SPI_ATMEL_QUADSPI MTD MTD_SPI_NAND MTD_UBI UBIFS_FS; do
             grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
                 echo "error: flash profile requires CONFIG_${sym}=y in $KERNEL_BUILD_DIR/.config" >&2
@@ -83,7 +85,22 @@ case "$STORAGE_SCHEMA" in
                 exit 1
             }
         done
-        if ! grep -Eq '^CONFIG_MTD_SPI_NOR=(y|m)
+
+        # SPI NOR is only needed later for factory identity/environment access,
+        # so it may remain a module. Linux must however expose 4 KiB erase units:
+        # the ratified NOR partition boundary at 0x8000 is not 64 KiB aligned.
+        grep -Eq '^CONFIG_MTD_SPI_NOR=(y|m)$' "$KERNEL_BUILD_DIR/.config" || {
+            echo "error: flash profile requires CONFIG_MTD_SPI_NOR=y or m" >&2
+            exit 1
+        }
+        grep -q '^CONFIG_MTD_SPI_NOR_USE_4K_SECTORS=y$' "$KERNEL_BUILD_DIR/.config" || {
+            echo "error: flash profile requires CONFIG_MTD_SPI_NOR_USE_4K_SECTORS=y" >&2
+            echo "       the 32 KiB AT91Bootstrap / 0x8000 U-Boot boundary must remain writable from Linux" >&2
+            exit 1
+        }
+        ;;
+    *)
+        echo "error: unknown NextGen storage schema: $STORAGE_SCHEMA" >&2
         exit 1
         ;;
 esac
