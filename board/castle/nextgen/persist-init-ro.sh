@@ -27,7 +27,7 @@ awk -v p="$PERSIST" '
     exit 1
 }
 
-mkdir -p     "$PERSIST/app/$PRODUCT/active"     "$PERSIST/data/$PRODUCT/Templates"     "$PERSIST/state/$PRODUCT"     "$PERSIST/state/platform"     "$PERSIST/common-state"     "$PERSIST/os/NetworkManager/system-connections"     "$PERSIST/os/NetworkManager/state"     "$PERSIST/os/dbus"     "$PERSIST/os/ssh"     "$PERSIST/os/seedrng"
+mkdir -p     "$PERSIST/app/$PRODUCT/active"     "$PERSIST/data/$PRODUCT/Templates"     "$PERSIST/state/$PRODUCT"     "$PERSIST/state/platform"     "$PERSIST/common-state"     "$PERSIST/os/NetworkManager/system-connections"     "$PERSIST/os/NetworkManager/state"     "$PERSIST/os/dbus"     "$PERSIST/os/chrony"     "$PERSIST/os/ssh"     "$PERSIST/os/seedrng"
 
 mkdir -p     /var/lib/dbus     /var/lib/NetworkManager     /var/lib/chrony     /var/log     /var/cache     /var/tmp
 
@@ -55,5 +55,6 @@ bind_one "$PERSIST/common-state" /opt/nextgen/common/state
 bind_one "$PERSIST/os/NetworkManager/system-connections"     /etc/NetworkManager/system-connections
 bind_one "$PERSIST/os/NetworkManager/state" /var/lib/NetworkManager
 bind_one "$PERSIST/os/dbus" /var/lib/dbus
+bind_one "$PERSIST/os/chrony" /var/lib/chrony
 
 touch "$READY"
