@@ -99,6 +99,7 @@ grep -q '/opt/nextgen/platform/bin/persist-init.sh' "$TARGET_DIR/etc/inittab" ||
 for helper in persist-init.sh nextgen-slot-common.sh nextgen-update-install nextgen-update-accept; do
     [ -x "$ROOT/platform/bin/$helper" ] || fail "platform helper $helper missing"
 done
+[ -x "$TARGET_DIR/sbin/e2fsck" ] || fail "target e2fsck missing for persist/SD recovery"
 
 [ ! -e "$ROOT/app/$PRODUCT/slotA" ] ||
     fail "directory slot leaked into immutable root"
