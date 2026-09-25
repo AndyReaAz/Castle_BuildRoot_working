@@ -310,7 +310,9 @@ attach and scan the 128 MiB rootfs device just to obtain the kernel. Both boot
 objects are static UBI volumes. Their volume metadata records the exact
 `used_bytes`, so `ubi read` with no explicit size loads only the real DTB or
 kernel length rather than the whole reserved partition. Static-volume CRC and
-UBI bad-block handling also apply to the boot objects.
+UBI bad-block handling also apply to the boot objects. Image generation limits
+`boot.ubi` to 8 MiB, deliberately leaving four 128 KiB eraseblocks free in the
+8.5 MiB partition for UBI/bad-block reserve.
 
 Build the prerequisites and image with:
 
