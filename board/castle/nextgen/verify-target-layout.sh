@@ -64,6 +64,16 @@ for helper in nextgen-update-install nextgen-update-accept usbcontrol.sh fwenv.s
     [ -x "$BIN/$helper" ] || fail "platform helper $helper is missing"
 done
 
+# These were historical development conveniences, not runtime dependencies.
+# Keep the finished image honest: usbcontrol.sh must remain self-contained
+# rather than silently depending on jq being present.
+[ ! -e "$TARGET_DIR/usr/bin/jq" ] || fail "jq unexpectedly remains in target"
+[ ! -e "$TARGET_DIR/usr/bin/drm_info" ] || fail "drm_info unexpectedly remains in target"
+[ ! -e "$TARGET_DIR/usr/sbin/rsyslogd" ] || fail "rsyslogd unexpectedly remains in target"
+if grep -Eq '(^|[^[:alnum:]_])jq([^[:alnum:]_]|$)' "$BIN/usbcontrol.sh"; then
+    fail "usbcontrol.sh has an undeclared jq runtime dependency"
+fi
+
 for font in Arial.ttf NotoSansCJKtc-Regular.ttf ionicons.ttf open-iconic.ttf; do
     [ -r "$COMMON_SHARE/$font" ] || fail "platform font $font is missing"
 done
