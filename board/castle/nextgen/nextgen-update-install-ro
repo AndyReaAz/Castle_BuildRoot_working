@@ -34,7 +34,8 @@ esac
 
 ROOT="${NEXTGEN_ROOT:-/opt/nextgen}"
 RUN_ROOT="${NEXTGEN_RUN_ROOT:-/run}"
-PLATFORM_ABI="$(cat /etc/nextgen-platform-abi 2>/dev/null || true)"
+PLATFORM_ABI_FILE="${NEXTGEN_PLATFORM_ABI_FILE:-/etc/nextgen-platform-abi}"
+PLATFORM_ABI="$(cat "$PLATFORM_ABI_FILE" 2>/dev/null || true)"
 case "$PLATFORM_ABI" in ''|*[!0-9]*) die "invalid platform ABI" ;; esac
 
 APP_ROOT="$ROOT/app/$PRODUCT"
