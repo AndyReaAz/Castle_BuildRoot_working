@@ -64,6 +64,14 @@ for helper in nextgen-update-install nextgen-update-accept usbcontrol.sh fwenv.s
     [ -x "$BIN/$helper" ] || fail "platform helper $helper is missing"
 done
 
+grep -q 'nextgen.env=' "$BIN/fwenv.sh" ||
+    fail "fwenv.sh does not select its backend from the kernel boot marker"
+grep -q 'uboot-env' "$BIN/fwenv.sh" ||
+    fail "fwenv.sh does not resolve the NOR environment by partition label"
+if grep -Eq '^[[:space:]]*/(boot|dev/mtd)[^#]*' "$TARGET_DIR/etc/fw_env.config" 2>/dev/null; then
+    fail "ambiguous default U-Boot environment backend remains enabled"
+fi
+
 [ -x "$TARGET_DIR/etc/init.d/sshd" ] ||
     fail "race-safe engineering sshd wrapper is missing"
 [ ! -e "$TARGET_DIR/etc/init.d/S50sshd" ] ||
