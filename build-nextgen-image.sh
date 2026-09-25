@@ -177,6 +177,29 @@ if [ "$PROFILE" = "6.18-ro" ]; then
         echo "error: RO-root U-Boot environment is missing nextgen.env=sd-ro" >&2
         exit 1
     }
+
+    for script in \
+        board/castle/nextgen/persist-init-ro.sh \
+        board/castle/nextgen/startup-ro.sh \
+        board/castle/nextgen/nextgen-slot-common-ro.sh \
+        board/castle/nextgen/nextgen-update-install-ro \
+        board/castle/nextgen/nextgen-update-accept-ro \
+        board/castle/nextgen/post-build-ro.sh \
+        board/castle/nextgen/post-image-ro.sh \
+        board/castle/nextgen/verify-target-ro-layout.sh \
+        board/castle/nextgen/write-sd-card-ro.sh \
+        board/castle/nextgen/tests/test-update-state.sh
+    do
+        /bin/sh -n "$ROOT/$script" || {
+            echo "error: invalid RO-root shell script: $script" >&2
+            exit 1
+        }
+    done
+
+    /bin/sh "$ROOT/board/castle/nextgen/tests/test-update-state.sh" || {
+        echo "error: RO-root Application image state-machine tests failed" >&2
+        exit 1
+    }
 fi
 
 # Reapply the project defconfig on every profile build so changes to
