@@ -104,6 +104,7 @@ ROOTFS_UBI="$SCRIPT_DIR/rootfs.ubi"
 
 SHA256SUM="$(find_tool sha256sum)"
 FLASHCP="$(find_tool flashcp)"
+FLASH_ERASE="$(find_tool flash_erase)"
 UBIFORMAT="$(find_tool ubiformat)"
 UBIDETACH="$(find_tool ubidetach)"
 
@@ -161,7 +162,7 @@ esac
 
 require_sd_boot
 
-echo "Programming SPI-NAND rootfs first..."
+echo "Programming SPI-NAND system/persist UBI first..."
 "$UBIDETACH" -p "$MTD_ROOTFS" >/dev/null 2>&1 || true
 "$UBIFORMAT" "$MTD_ROOTFS" -y -f "$ROOTFS_UBI"
 
@@ -169,16 +170,18 @@ echo "Programming SPI-NAND boot UBI..."
 "$UBIDETACH" -p "$MTD_BOOT" >/dev/null 2>&1 || true
 "$UBIFORMAT" "$MTD_BOOT" -y -f "$BOOT_UBI"
 
-echo "Programming redundant U-Boot environment..."
-"$FLASHCP" -v "$NOR_ENV" "$MTD_ENV"
-
-echo "Programming AT91Bootstrap..."
-"$FLASHCP" -v "$NOR_AT91" "$MTD_AT91"
-
-# U-Boot is deliberately the final write. Reaching this point means both NAND
-# UBI devices, the environment and the exact-length bootstrap path are ready.
-echo "Programming U-Boot last..."
+# Replace U-Boot while the existing fixed-window bootstrap can still load the
+# first 640 KiB if power is lost before the trailer-aware bootstrap is written.
+echo "Programming U-Boot..."
 "$FLASHCP" -v "$NOR_UBOOT" "$MTD_UBOOT"
+
+echo "Erasing legacy/test U-Boot environment..."
+"$FLASH_ERASE" "$MTD_ENV" 0 0 >/dev/null
+
+# Bootstrap is deliberately last. Reaching this point means both NAND UBI
+# devices and the migration-safe U-Boot have already been programmed.
+echo "Programming AT91Bootstrap last..."
+"$FLASHCP" -v "$NOR_AT91" "$MTD_AT91"
 
 sync
 
