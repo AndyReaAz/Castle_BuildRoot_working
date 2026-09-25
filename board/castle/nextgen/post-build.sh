@@ -70,6 +70,19 @@ case "$STORAGE_SCHEMA" in
             }
         done
         ;;
+    flash-ubi-v1)
+        [ -r "$KERNEL_BUILD_DIR/.config" ] || {
+            echo "error: flash profile has no external kernel .config: $KERNEL_BUILD_DIR/.config" >&2
+            exit 1
+        }
+        for sym in SPI_ATMEL_QUADSPI MTD_SPI_NAND MTD_UBI UBIFS_FS; do
+            grep -q "^CONFIG_${sym}=y$" "$KERNEL_BUILD_DIR/.config" || {
+                echo "error: flash profile requires CONFIG_${sym}=y in $KERNEL_BUILD_DIR/.config" >&2
+                echo "       flash-root storage cannot depend on a module from the rootfs it is trying to mount" >&2
+                exit 1
+            }
+        done
+        ;;
     *)
         echo "error: unknown NextGen storage schema: $STORAGE_SCHEMA" >&2
         exit 1
