@@ -122,6 +122,7 @@ fi
 build_product()
 {
     product="$1"
+    shift
 
     if [ -n "${NEXTGEN_BUILDROOT_OUT:-}" ]; then
         out="$NEXTGEN_BUILDROOT_OUT"
