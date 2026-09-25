@@ -159,7 +159,17 @@ if [ "$PROFILE" = "6.18-ro" ]; then
             exit 1
         }
     done
-    grep -q '^CONFIG_BLK_DEV_LOOP_MIN_COUNT=4    [ -z "${NEXTGEN_UBOOT_ENV:-}" ] || {
+    grep -q '^CONFIG_BLK_DEV_LOOP_MIN_COUNT=4$' "$KERNEL_BUILD_DIR/.config" || {
+        echo "error: RO-root kernel requires CONFIG_BLK_DEV_LOOP_MIN_COUNT=4" >&2
+        echo "       rebuild linux-6.18 from chatgpt/ro-root-image-slots first" >&2
+        exit 1
+    }
+    [ -f "$NEXTGEN_UBOOT_ENV_TEXT" ] || {
+        echo "error: RO-root U-Boot environment is missing:" >&2
+        echo "       $NEXTGEN_UBOOT_ENV_TEXT" >&2
+        exit 1
+    }
+    [ -z "${NEXTGEN_UBOOT_ENV:-}" ] || {
         echo "error: RO-root profile refuses a prebuilt NEXTGEN_UBOOT_ENV override" >&2
         echo "       the environment must be generated from the validated RO text source" >&2
         exit 1
