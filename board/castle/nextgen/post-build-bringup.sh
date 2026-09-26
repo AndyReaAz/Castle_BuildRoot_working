@@ -23,6 +23,12 @@ install -m 0755 "$SCRIPT_DIR/S01NextGenBringup" \
 printf '%s\n' bringup-sd-v1 > "$TARGET_DIR/etc/nextgen-storage-schema"
 printf '%s\n' 1 > "$TARGET_DIR/etc/nextgen-bringup-image"
 
+# Bring-up p3 is the writable ext4 data/log partition. Keep this profile-only:
+# production RO SD uses a different partition map and must not inherit it.
+mkdir -p "$TARGET_DIR/sdcard"
+sed -i '\|[[:space:]]/sdcard[[:space:]]|d' "$TARGET_DIR/etc/fstab"
+printf '%s\n' '/dev/mmcblk0p3 /sdcard ext4 defaults 0 2' >> "$TARGET_DIR/etc/fstab"
+
 for script in \
     "$PLATFORM_BIN/nextgen-bringup-screen" \
     "$PLATFORM_BIN/nextgen-bringup.sh" \
