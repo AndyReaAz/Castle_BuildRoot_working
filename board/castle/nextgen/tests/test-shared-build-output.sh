@@ -48,6 +48,8 @@ echo "PASS: existing populated shared output can be selected explicitly"
 grep -q 'rm -rf "\$NEXTGEN_ROOT"' "$ROOT/board/castle/nextgen/post-build.sh"
 grep -q 'candidate_bundle="\$artifact_root/\$product/6.18-flash/production-provision"' "$WRAPPER"
 grep -q 'NEXTGEN_PRODUCT=\$expected_product' "$ROOT/board/castle/nextgen/post-build-bringup.sh"
+grep -q 'build_provision_bundle=' "$WRAPPER"
+! grep -q 'export NEXTGEN_PROVISION_BUNDLE_DIR' "$WRAPPER"
 
 echo "PASS: shared target is fully restaged between products"
 echo "PASS: bring-up consumes the matching product snapshot"
