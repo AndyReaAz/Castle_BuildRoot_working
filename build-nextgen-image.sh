@@ -152,6 +152,38 @@ case "$PROFILE" in
         ;;
 esac
 
+nextgen_buildroot_out()
+{
+    product="$1"
+
+    if [ -n "${NEXTGEN_BUILDROOT_OUT:-}" ]; then
+        printf '%s\n' "$NEXTGEN_BUILDROOT_OUT"
+    elif [ "$PROFILE" = "6.18-ro" ] || [ "$PROFILE" = "6.18-flash" ]; then
+        printf '%s\n' "${NEXTGEN_SHARED_BUILDROOT_OUT:-$ROOT/output-nextgen-shared}"
+    elif [ "$PROFILE" = "6.18-bringup" ]; then
+        printf '%s\n' "${NEXTGEN_BRINGUP_BUILDROOT_OUT:-$ROOT/output-nextgen-bringup}"
+    elif [ "$PRODUCT_EXPLICIT" -eq 1 ]; then
+        printf '%s\n' "$ROOT/output-nextgen-$product"
+    else
+        printf '%s\n' "$ROOT/output-nextgen"
+    fi
+}
+
+# Lightweight planning mode for wrapper regressions and operator inspection.
+# It deliberately stops before checking or building any platform artifact.
+if [ "${NEXTGEN_PLAN_ONLY:-0}" = 1 ]; then
+    case "$PRODUCT" in
+        both)
+            printf 'sound=%s\n' "$(nextgen_buildroot_out sound)"
+            printf 'vibra=%s\n' "$(nextgen_buildroot_out vibra)"
+            ;;
+        sound|vibra)
+            printf '%s=%s\n' "$PRODUCT" "$(nextgen_buildroot_out "$PRODUCT")"
+            ;;
+    esac
+    exit 0
+fi
+
 [ -f "$KERNEL_BUILD_DIR/arch/arm/boot/zImage" ] || {
     echo "error: selected kernel has no zImage: $KERNEL_BUILD_DIR" >&2
     exit 1
@@ -390,25 +422,7 @@ build_product()
     product="$1"
     shift
 
-    if [ -n "${NEXTGEN_BUILDROOT_OUT:-}" ]; then
-        out="$NEXTGEN_BUILDROOT_OUT"
-    elif [ "$PROFILE" = "6.18-ro" ] || [ "$PROFILE" = "6.18-flash" ]; then
-        # Sound/vibration and SD/NAND use the same Buildroot package universe.
-        # Reuse one canonical O= tree and let the late NextGen hooks replace
-        # only product payloads, backend markers and final image containers.
-        # NEXTGEN_SHARED_BUILDROOT_OUT can point at an already-populated tree
-        # during transition (for example the proven output-nextgen-sound).
-        out="${NEXTGEN_SHARED_BUILDROOT_OUT:-$ROOT/output-nextgen-shared}"
-    elif [ "$PROFILE" = "6.18-bringup" ]; then
-        # Bring-up has a genuinely different package/rootfs policy, but it is
-        # not product-specific enough to justify duplicate sound/vibra worlds.
-        out="${NEXTGEN_BRINGUP_BUILDROOT_OUT:-$ROOT/output-nextgen-bringup}"
-    elif [ "$PRODUCT_EXPLICIT" -eq 1 ]; then
-        out="$ROOT/output-nextgen-$product"
-    else
-        # Preserve the historical no-product invocation for old workflows.
-        out="$ROOT/output-nextgen"
-    fi
+    out="$(nextgen_buildroot_out "$product")"
 
     make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
 
