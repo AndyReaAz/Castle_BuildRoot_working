@@ -21,6 +21,7 @@ log()
 
 screen_progress()
 {
+    log "stage: $1"
     "$SCREEN" progress "$1" 2>/dev/null
 }
 
@@ -99,7 +100,7 @@ main()
     [ "$provision_rc" -eq 0 ] ||
         fail "storage provisioning failed (rc=$provision_rc)" || return 1
 
-    screen_progress "Final verification..." ||
+    screen_progress "Saving results..." ||
         fail "LCD/fbcon became unavailable" || return 1
     log "running final sync"
     sync
