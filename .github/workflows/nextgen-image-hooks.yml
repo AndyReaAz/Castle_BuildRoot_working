@@ -8,6 +8,9 @@ on:
       - configs/castle_nextgen*_defconfig
       - build-nextgen-image.sh
       - board/castle/nextgen/post-*.sh
+      - board/castle/nextgen/nextgen-bringup*
+      - board/castle/nextgen/nextgen-provision-storage
+      - board/castle/nextgen/S01NextGenBringup
       - board/castle/nextgen/persist-init-ro.sh
       - board/castle/nextgen/verify-target-*.sh
       - board/castle/nextgen/rootfs-overlay/etc/NetworkManager/conf.d/10-nextgen-unmanaged.conf
