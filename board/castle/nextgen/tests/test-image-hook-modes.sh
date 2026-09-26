@@ -101,6 +101,31 @@ grep -Fq 'nextgen.env=bringup' "$MANUAL_FLASH" || {
 echo "PASS: provisioning preflight completes before the arm gate"
 echo "PASS: flash writers require the explicit bring-up environment"
 
+# The normal bring-up profile is the factory card, not a passive service card:
+# it must require a production bundle, arm that exact bundle, mount the writable
+# p3 data partition, and leave a persistent run log there.
+WRAPPER="$BUILDROOT/build-nextgen-image.sh"
+BRINGUP_POST="$BUILDROOT/board/castle/nextgen/post-build-bringup.sh"
+BRINGUP_INIT="$BUILDROOT/board/castle/nextgen/S01NextGenBringup"
+BRINGUP_FLOW="$BUILDROOT/board/castle/nextgen/nextgen-bringup.sh"
+
+grep -Fq 'bring-up profile requires a matching production provision bundle' "$WRAPPER" &&
+grep -Fq 'build_arm_provisioning="YES-I-HAVE-HARDWARE-TESTED-NOR-UBI-BOOT"' "$WRAPPER" &&
+grep -Fq 'NEXTGEN_ARM_PROVISIONING="$build_arm_provisioning"' "$WRAPPER" || {
+    echo "FAIL: factory bring-up profile is no longer automatically armed" >&2
+    exit 1
+}
+grep -Fq '/dev/mmcblk0p3 /sdcard ext4 defaults 0 2' "$BRINGUP_POST" &&
+grep -Fq 'nextgen-bringup.log' "$BRINGUP_INIT" &&
+grep -Fq 'NEXTGEN_BRINGUP_LOG' "$BRINGUP_FLOW" &&
+grep -Fq 'NEXTGEN_BRINGUP_LOG' "$PROVISIONER" || {
+    echo "FAIL: bring-up SD logging path regressed" >&2
+    exit 1
+}
+
+echo "PASS: factory bring-up profile requires and arms a production bundle"
+echo "PASS: bring-up writes a persistent log to the SD data partition"
+
 
 # RO-root ownership invariants used by engineering access and network identity.
 RO_POST="$BUILDROOT/board/castle/nextgen/post-build-ro.sh"
