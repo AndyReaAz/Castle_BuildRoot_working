@@ -6,6 +6,7 @@ ARM_MARKER=/etc/nextgen-provision-armed
 TMP=/tmp/nextgen-provision
 UBOOT_TRAILER_OFFSET=$((0x137ff0))
 LOG_FILE="${NEXTGEN_BRINGUP_LOG:-}"
+SCREEN=/opt/nextgen/platform/bin/nextgen-bringup-screen
 
 append_log()
 {
@@ -17,6 +18,17 @@ log()
     message="BRINGUP: $*"
     echo "$message"
     append_log "$message"
+}
+
+progress()
+{
+    stage="$*"
+    log "stage: $stage"
+    if [ -x "$SCREEN" ]; then
+        "$SCREEN" progress "NEXTGEN BRING-UP" "" "$stage" 2>/dev/null ||             log "warning: could not update LCD progress display"
+    else
+        log "warning: bring-up screen helper is unavailable"
+    fi
 }
 
 not_armed()
@@ -246,6 +258,8 @@ main()
         }
     done
 
+    progress "Checking production image..."
+
     [ -d "$BUNDLE" ] || {
         fail "production provisioning bundle is missing"
         return 1
@@ -274,6 +288,8 @@ main()
         fail "invalid production product"; return 1 ;;
     esac
     log "validated production bundle: product=$NEXTGEN_PRODUCT backend=$NEXTGEN_STORAGE_BACKEND schema=$NEXTGEN_STORAGE_SCHEMA"
+
+    progress "Checking flash layout..."
 
     require_mtd_size at91bootstrap "$((0x00008000))" || return 1
     require_mtd_size uboot "$((0x00138000))" || return 1
@@ -309,26 +325,30 @@ main()
     # Program and verify NAND before touching NOR. The currently installed boot
     # chain and the service SD card remain recoverable until both UBI devices
     # have been validated.
-    log "formatting production system/persist UBI"
+    progress "Programming system storage..."
     ubidetach -p "$rootdev" >/dev/null 2>&1 || true
     ubiformat "$rootdev" -y -f "$BUNDLE/rootfs.ubi" || {
         fail "ubiformat failed for rootfs"
         return 1
     }
+
+    progress "Verifying system storage..."
     verify_rootfs_ubi "$rootdev" "$NEXTGEN_PRODUCT" || return 1
 
-    log "formatting production boot UBI"
+    progress "Programming boot storage..."
     ubidetach -p "$bootdev" >/dev/null 2>&1 || true
     ubiformat "$bootdev" -y -f "$BUNDLE/boot.ubi" || {
         fail "ubiformat failed for boot"
         return 1
     }
+
+    progress "Verifying boot storage..."
     verify_boot_ubi "$bootdev" || return 1
 
     # Replace U-Boot before bootstrap. U-Boot is deliberately <= 0xA0000 so
     # the old fixed-window bootstrap can still load it if power disappears
     # before the trailer-aware bootstrap is written.
-    log "programming NOR U-Boot"
+    progress "Programming U-Boot..."
     flash_erase "$ubootdev" 0 0 >/dev/null || {
         fail "could not erase U-Boot partition"
         return 1
@@ -346,18 +366,20 @@ main()
         fail "could not program U-Boot length trailer"
         return 1
     }
+
+    progress "Verifying U-Boot..."
     verify_readback "$ubootdev" 0 "$BUNDLE/u-boot.bin" u-boot || return 1
     verify_readback "$ubootdev" "$UBOOT_TRAILER_OFFSET" "$BUNDLE/u-boot.trailer" u-boot-trailer || return 1
 
     # Compiled production defaults are authoritative for the new baseline.
-    log "erasing NOR U-Boot environment"
+    progress "Resetting boot environment..."
     flash_erase "$envdev" 0 0 >/dev/null || {
         fail "could not erase U-Boot environment"
         return 1
     }
 
     # Bootstrap is last: after this write ROM selects the new NOR boot chain.
-    log "programming NOR AT91Bootstrap"
+    progress "Programming bootloader..."
     flash_erase "$at91dev" 0 0 >/dev/null || {
         fail "could not erase AT91Bootstrap partition"
         return 1
@@ -371,8 +393,11 @@ main()
         fail "could not program AT91Bootstrap"
         return 1
     }
+
+    progress "Verifying bootloader..."
     verify_readback "$at91dev" 0 "$BUNDLE/at91bootstrap.bin" at91bootstrap || return 1
 
+    progress "Final verification..."
     sync
     log "production storage programming and readback verification complete"
     return 0
