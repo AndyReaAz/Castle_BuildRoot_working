@@ -14,6 +14,14 @@ set -f
     exit 1
 }
 echo "PASS: build-nextgen-image.sh parses cleanly"
+
+if [ -f "$BUILDROOT/rebuild-nextgen-from-scratch.sh" ]; then
+    bash -n "$BUILDROOT/rebuild-nextgen-from-scratch.sh" || {
+        echo 'FAIL: rebuild-nextgen-from-scratch.sh shell syntax' >&2
+        exit 1
+    }
+    echo "PASS: rebuild-nextgen-from-scratch.sh parses cleanly"
+fi
 HOOKS="$(sed -n \
     -e 's/^BR2_ROOTFS_POST_BUILD_SCRIPT="\([^"]*\)"$/\1/p' \
     -e 's/^BR2_ROOTFS_POST_FAKEROOT_SCRIPT="\([^"]*\)"$/\1/p' \
