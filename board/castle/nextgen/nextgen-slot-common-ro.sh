@@ -1,6 +1,10 @@
 #!/bin/sh
 # Shared validation helpers for RO-root Application image slots.
 # Callers define PRODUCT, APP_ROOT, FACTORY_ROOT and PLATFORM_ABI first.
+# These are read-only queries: stdout and exit status are their only outputs.
+# Subshell bodies isolate scratch variables from the caller and nested helpers.
+# In particular, validating an accepted slot must not replace the installer's
+# candidate version, image name, byte count or digest.
 
 nextgen_valid_ref()
 {
@@ -11,13 +15,13 @@ nextgen_valid_ref()
 }
 
 nextgen_meta_value()
-{
+(
     key="$1"
     file="$2"
     count="$(grep -c "^$key=" "$file" 2>/dev/null || true)"
     [ "$count" -eq 1 ] || return 1
     sed -n "s/^$key=//p" "$file"
-}
+)
 
 nextgen_slot_image()
 {
@@ -36,7 +40,7 @@ nextgen_slot_meta()
 }
 
 nextgen_factory_version()
-{
+(
     info="$FACTORY_ROOT/bundle.info"
     [ -r "$info" ] || return 1
     [ "$(nextgen_meta_value format "$info" 2>/dev/null || true)" = 4 ] || return 1
@@ -46,10 +50,10 @@ nextgen_factory_version()
     case "$value" in ''|*[!0-9]*) return 1 ;; esac
     [ "$value" -gt 0 ] && [ "$value" -le 2147483647 ] || return 1
     printf '%s\n' "$value"
-}
+)
 
 nextgen_slot_version()
-{
+(
     ref="$1"
     nextgen_valid_ref "$ref" || return 1
 
@@ -67,10 +71,10 @@ nextgen_slot_version()
     case "$value" in ''|*[!0-9]*) return 1 ;; esac
     [ "$value" -gt 0 ] && [ "$value" -le 2147483647 ] || return 1
     printf '%s\n' "$value"
-}
+)
 
 nextgen_slot_valid()
-{
+(
     ref="$1"
     nextgen_valid_ref "$ref" || return 1
 
@@ -102,10 +106,10 @@ nextgen_slot_valid()
     expected="$(printf '%s' "$expected" | tr 'A-F' 'a-f')"
     actual="$(sha256sum "$image" | awk '{print $1}')"
     [ "$actual" = "$expected" ]
-}
+)
 
 nextgen_mounted_app_valid()
-{
+(
     expected_version="$1"
     info="$ACTIVE_MOUNT/bundle.info"
 
@@ -118,4 +122,4 @@ nextgen_mounted_app_valid()
     [ "$(nextgen_meta_value platform_abi "$info" 2>/dev/null || true)" = "$PLATFORM_ABI" ] &&
     [ "$(nextgen_meta_value version "$info" 2>/dev/null || true)" = "$expected_version" ] &&
     { [ "$PRODUCT" != sound ] || [ -r "$ACTIVE_MOUNT/BaseHPD/hpdc.csv" ]; }
-}
+)
