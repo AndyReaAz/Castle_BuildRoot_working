@@ -593,6 +593,56 @@ build_product()
         printf 'U-Boot environment:     %s\n' "$out/images/uboot.env"
     fi
 
+    # The shared O= tree is intentionally mutable between product/backend
+    # variants. Preserve each verified deployable set outside that tree before
+    # the next late-stage image pass replaces it.
+    case "$PROFILE" in
+        6.18-ro|6.18-flash|6.18-bringup)
+            artifact_root="${NEXTGEN_ARTIFACT_ROOT:-$ROOT/output-nextgen-artifacts}"
+            artifact_dir="$artifact_root/$product/$PROFILE"
+            rm -rf "$artifact_dir"
+            mkdir -p "$artifact_dir"
+
+            case "$PROFILE" in
+                6.18-ro)
+                    for artifact in \
+                        boot.bin u-boot.bin zImage nextgen.dtb uboot.env \
+                        boot.vfat rootfs.squashfs persist.ext4 data.ext4 sdcard.img \
+                        write-sd-card.sh nextgen-image-manifest.sha256
+                    do
+                        [ ! -e "$out/images/$artifact" ] || cp -a "$out/images/$artifact" "$artifact_dir/"
+                    done
+                    ;;
+                6.18-flash)
+                    for artifact in \
+                        boot.bin u-boot.bin u-boot.nor-trailer zImage nextgen.dtb uboot.env \
+                        rootfs.squashfs persist.ubifs boot.ubi rootfs.ubi \
+                        nor-at91bootstrap.bin nor-uboot.bin nor-uboot-env.bin nor.img \
+                        program-nextgen-flash.sh nextgen-flash-manifest.sha256
+                    do
+                        [ ! -e "$out/images/$artifact" ] || cp -a "$out/images/$artifact" "$artifact_dir/"
+                    done
+                    [ ! -d "$out/images/production-provision" ] || \
+                        cp -a "$out/images/production-provision" "$artifact_dir/"
+                    ;;
+                6.18-bringup)
+                    for artifact in \
+                        boot.bin u-boot.bin zImage nextgen.dtb uboot.env \
+                        boot.vfat rootfs.ext4 sdcard.img write-sd-card.sh
+                    do
+                        [ ! -e "$out/images/$artifact" ] || cp -a "$out/images/$artifact" "$artifact_dir/"
+                    done
+                    ;;
+            esac
+
+            (
+                cd "$artifact_dir"
+                find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 -r sha256sum > SHA256SUMS
+            )
+            printf 'Verified artifact set: %s\n' "$artifact_dir"
+            ;;
+    esac
+
     printf 'Built product:          %s\n' "$product"
     printf 'Built kernel profile:   %s\n' "$PROFILE"
     printf 'Profile marker:         /etc/nextgen-kernel-profile\n'
