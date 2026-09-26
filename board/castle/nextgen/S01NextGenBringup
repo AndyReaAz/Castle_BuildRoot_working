@@ -1,9 +1,59 @@
 #!/bin/sh
 
+SCREEN=/opt/nextgen/platform/bin/nextgen-bringup-screen
+BRINGUP=/opt/nextgen/platform/bin/nextgen-bringup.sh
+SDCARD=/sdcard
+LOG_DIR="$SDCARD/bringup"
+LOG_FILE="$LOG_DIR/nextgen-bringup.log"
+
+show_log_failure()
+{
+    "$SCREEN" fail \
+        "BRING-UP FAILED" \
+        "" \
+        "SD LOG PARTITION" \
+        "UNAVAILABLE" \
+        "" \
+        "See service console" 2>/dev/null || true
+}
+
+mount_log_partition()
+{
+    mkdir -p "$SDCARD" || return 1
+    if ! grep -qs " $SDCARD " /proc/mounts; then
+        mount -t ext4 /dev/mmcblk0p3 "$SDCARD" || return 1
+    fi
+    mkdir -p "$LOG_DIR" || return 1
+    touch "$LOG_FILE" || return 1
+}
+
 case "${1:-}" in
     start)
         echo "Starting NextGen bring-up provisioning"
-        /opt/nextgen/platform/bin/nextgen-bringup.sh
+
+        mount_log_partition || {
+            echo "BRINGUP: cannot mount writable SD log partition /dev/mmcblk0p3 at $SDCARD" >&2
+            show_log_failure
+            exit 1
+        }
+
+        export NEXTGEN_BRINGUP_LOG="$LOG_FILE"
+        {
+            printf '\n===== NextGen bring-up start =====\n'
+            printf 'utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)"
+            printf 'kernel=%s\n' "$(uname -r 2>/dev/null || echo unknown)"
+            printf 'cmdline=%s\n' "$(cat /proc/cmdline 2>/dev/null || echo unavailable)"
+        } >> "$LOG_FILE"
+
+        "$BRINGUP"
+        rc=$?
+
+        {
+            printf 'result_rc=%s\n' "$rc"
+            printf '===== NextGen bring-up end =====\n'
+        } >> "$LOG_FILE"
+        sync
+        exit "$rc"
         ;;
     stop)
         ;;
