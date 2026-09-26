@@ -36,6 +36,15 @@ fail()
     exit 1
 }
 
+case "$PRODUCT" in
+    sound) other_product=vibra ;;
+    vibra) other_product=sound ;;
+esac
+for realm in app data state; do
+    [ ! -e "$ROOT/$realm/$other_product" ] ||
+        fail "stale $other_product $realm realm survived $PRODUCT staging"
+done
+
 [ -d "$APP/slotA" ] || fail "slotA is missing"
 [ -d "$APP/factory" ] || fail "factory slot is missing"
 [ "$(readlink "$APP/active" 2>/dev/null || true)" = slotA ] ||
@@ -57,6 +66,11 @@ if [ "$PRODUCT" = sound ]; then
     for slot in slotA factory; do
         [ -r "$APP/$slot/BaseHPD/hpdc.csv" ] ||
             fail "$slot sound HPD database is missing"
+    done
+else
+    for slot in slotA factory; do
+        [ ! -e "$APP/$slot/BaseHPD" ] ||
+            fail "$slot contains stale sound-only BaseHPD data"
     done
 fi
 
