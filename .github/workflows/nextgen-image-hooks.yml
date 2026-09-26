@@ -1,0 +1,25 @@
+name: NextGen image hook checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [chatgpt/ro-root-image-slots]
+    paths:
+      - configs/castle_nextgen*_defconfig
+      - board/castle/nextgen/post-*.sh
+      - board/castle/nextgen/tests/test-image-hook-modes.sh
+      - .github/workflows/nextgen-image-hooks.yml
+
+permissions:
+  contents: read
+
+jobs:
+  hooks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check hook modes and shell syntax without building packages
+        run: /bin/sh board/castle/nextgen/tests/test-image-hook-modes.sh
