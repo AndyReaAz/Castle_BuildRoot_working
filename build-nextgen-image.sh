@@ -452,8 +452,8 @@ build_product()
 
     if [ "$PROFILE" = "6.18-bringup" ]; then
         if [ -z "${NEXTGEN_PROVISION_BUNDLE_DIR:-}" ]; then
-            shared_out="${NEXTGEN_SHARED_BUILDROOT_OUT:-$ROOT/output-nextgen-shared}"
-            candidate_bundle="$shared_out/images/production-provision"
+            artifact_root="${NEXTGEN_ARTIFACT_ROOT:-$ROOT/output-nextgen-artifacts}"
+            candidate_bundle="$artifact_root/$product/6.18-flash/production-provision"
             if [ -d "$candidate_bundle" ]; then
                 NEXTGEN_PROVISION_BUNDLE_DIR="$candidate_bundle"
                 export NEXTGEN_PROVISION_BUNDLE_DIR
