@@ -56,3 +56,47 @@ for hook in $HOOKS; do
 done
 [ "$failed" -eq 0 ] || exit 1
 echo "All $count configured NextGen image hooks are executable and parse cleanly"
+
+
+# Provisioning must complete its read-only checks before consulting the arm
+# marker, and both automatic/manual writers must be tied to the explicit
+# bring-up environment.
+PROVISIONER="$BUILDROOT/board/castle/nextgen/nextgen-provision-storage"
+MANUAL_FLASH="$BUILDROOT/board/castle/nextgen/program-nextgen-flash.sh"
+/bin/sh -n "$PROVISIONER"
+/bin/sh -n "$MANUAL_FLASH"
+
+line_no()
+{
+    pattern="$1"
+    file="$2"
+    grep -n -m1 "$pattern" "$file" | cut -d: -f1
+}
+
+bundle_line="$(line_no 'sha256sum -c manifest.sha256' "$PROVISIONER")"
+mtd_line="$(line_no 'rootdev=.*mtd_by_label rootfs' "$PROVISIONER")"
+boot_line="$(line_no 'require_bringup_environment || return 1' "$PROVISIONER")"
+arm_line="$(line_no 'arm_value=.*ARM_MARKER' "$PROVISIONER")"
+write_line="$(line_no 'ubiformat "\$rootdev"' "$PROVISIONER")"
+
+[ "$bundle_line" -lt "$arm_line" ] &&
+[ "$mtd_line" -lt "$arm_line" ] &&
+[ "$boot_line" -lt "$arm_line" ] &&
+[ "$arm_line" -lt "$write_line" ] || {
+    echo "FAIL: provisioning preflight/arming order regressed" >&2
+    exit 1
+}
+
+grep -Fq 'nextgen.env=bringup' "$PROVISIONER" &&
+grep -Fq 'hardware-tested-nor-ubi-v1' "$PROVISIONER" &&
+grep -Fq 'nextgen.env=bringup' "$MANUAL_FLASH" || {
+    echo "FAIL: provisioning boot/arm guards regressed" >&2
+    exit 1
+}
+! grep -Fq 'root=/dev/mmcblk' "$MANUAL_FLASH" || {
+    echo "FAIL: manual flash writer still accepts generic SD-root boot" >&2
+    exit 1
+}
+
+echo "PASS: provisioning preflight completes before the arm gate"
+echo "PASS: flash writers require the explicit bring-up environment"
