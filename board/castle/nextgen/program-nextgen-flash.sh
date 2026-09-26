@@ -76,21 +76,14 @@ require_size()
         die "$(basename "$file") is $actual bytes, expected $expected"
 }
 
-require_sd_boot()
+require_bringup_boot()
 {
     cmdline="$(cat /proc/cmdline 2>/dev/null || true)"
 
     case " $cmdline " in
-        *" nextgen.env=flash "*)
-            die "refusing to reprogram boot flash while running from the production flash environment"
-            ;;
-    esac
-
-    case " $cmdline " in
-        *" nextgen.env=sd "*|*" root=/dev/mmcblk"*)
-            ;;
+        *" nextgen.env=bringup "*) ;;
         *)
-            die "programming is allowed only from the SD-card bring-up environment"
+            die "programming is allowed only from the explicit bring-up SD environment"
             ;;
     esac
 }
@@ -160,7 +153,7 @@ case "$ACTION" in
         ;;
 esac
 
-require_sd_boot
+require_bringup_boot
 
 echo "Programming SPI-NAND system/persist UBI first..."
 "$UBIDETACH" -p "$MTD_ROOTFS" >/dev/null 2>&1 || true
