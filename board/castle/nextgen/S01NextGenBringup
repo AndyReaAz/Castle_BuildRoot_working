@@ -4,7 +4,6 @@ SCREEN=/opt/nextgen/platform/bin/nextgen-bringup-screen
 BRINGUP=/opt/nextgen/platform/bin/nextgen-bringup.sh
 SDCARD=/sdcard
 LOG_DIR="$SDCARD/bringup"
-LOG_FILE="$LOG_DIR/nextgen-bringup.log"
 
 show_log_failure()
 {
@@ -24,7 +23,33 @@ mount_log_partition()
         mount -t ext4 /dev/mmcblk0p3 "$SDCARD" || return 1
     fi
     mkdir -p "$LOG_DIR" || return 1
-    touch "$LOG_FILE" || return 1
+}
+
+next_run_id()
+{
+    max=0
+
+    # Fixed-width decimal names sort naturally, but derive the maximum rather
+    # than relying on directory order so copied/restored logs cannot regress
+    # the sequence.
+    for path in "$LOG_DIR"/run-[0-9]*-*.log
+    do
+        [ -f "$path" ] || continue
+        name="${path##*/}"
+        number="${name#run-}"
+        number="${number%%-*}"
+        case "$number" in
+            ''|*[!0-9]*) continue ;;
+        esac
+
+        # Strip padding before shell arithmetic so leading zeroes are never
+        # interpreted as octal.
+        number="$(printf '%s\n' "$number" | sed 's/^0*//')"
+        [ -n "$number" ] || number=0
+        [ "$number" -le "$max" ] || max="$number"
+    done
+
+    printf '%06d\n' "$((max + 1))"
 }
 
 case "${1:-}" in
@@ -37,10 +62,22 @@ case "${1:-}" in
             exit 1
         }
 
+        RUN_ID="$(next_run_id)"
+        LOG_FILE="$LOG_DIR/run-$RUN_ID-inprogress.log"
+        FINAL_LOG=""
+        touch "$LOG_FILE" || {
+            echo "BRINGUP: cannot create run log $LOG_FILE" >&2
+            show_log_failure
+            exit 1
+        }
+
         export NEXTGEN_BRINGUP_LOG="$LOG_FILE"
         {
-            printf '\n===== NextGen bring-up start =====\n'
-            printf 'utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)"
+            printf '===== NextGen bring-up run %s =====\n' "$RUN_ID"
+            printf 'sequence=%s\n' "$RUN_ID"
+            # RTC time is diagnostic only; the sequence number is authoritative
+            # because a factory unit may not yet have a valid date.
+            printf 'rtc_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)"
             printf 'kernel=%s\n' "$(uname -r 2>/dev/null || echo unknown)"
             printf 'cmdline=%s\n' "$(cat /proc/cmdline 2>/dev/null || echo unavailable)"
         } >> "$LOG_FILE"
@@ -52,7 +89,20 @@ case "${1:-}" in
             printf 'result_rc=%s\n' "$rc"
             printf '===== NextGen bring-up end =====\n'
         } >> "$LOG_FILE"
+
+        if [ "$rc" -eq 0 ]; then
+            FINAL_LOG="$LOG_DIR/run-$RUN_ID-pass.log"
+        else
+            FINAL_LOG="$LOG_DIR/run-$RUN_ID-fail.log"
+        fi
+
+        mv -f "$LOG_FILE" "$FINAL_LOG" || {
+            echo "BRINGUP: could not finalize run log as $FINAL_LOG" >&2
+            sync
+            exit 1
+        }
         sync
+        echo "BRINGUP: run log: $FINAL_LOG"
         exit "$rc"
         ;;
     stop)
