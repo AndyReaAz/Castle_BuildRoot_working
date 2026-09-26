@@ -95,12 +95,15 @@ if [ "$PRODUCT" = sound ]; then
             fail "$template_dir has no JSON release templates"
         for template in "$template_dir"/*.json; do
             [ -f "$template" ] || continue
+            template_name="$(basename "$template" .json)"
             grep -Eq '"FileFormat"[[:space:]]*:[[:space:]]*"NextGenTemplate"' "$template" ||
                 fail "release template lacks NextGenTemplate metadata: $template"
             grep -Eq '"SchemaVersion"[[:space:]]*:[[:space:]]*1([,[:space:]}]|$)' "$template" ||
                 fail "release template lacks schema version 1: $template"
             grep -Eq '"Product"[[:space:]]*:[[:space:]]*"sound"' "$template" ||
                 fail "non-sound release template leaked into sound slot: $template"
+            grep -Eq '"FileName"[[:space:]]*:[[:space:]]*"'"$template_name"'"' "$template" ||
+                fail "release template FileName does not match filename: $template"
             grep -Eq '"ModelTypeCompatibility"[[:space:]]*:[[:space:]]*[1-9][0-9]*' "$template" ||
                 fail "certified release template lacks explicit model-type compatibility: $template"
         done
@@ -108,8 +111,6 @@ if [ "$PRODUCT" = sound ]; then
         for canonical in BS4142_3RD ENV_3RD NAW_OCT; do
             [ -s "$template_dir/$canonical.json" ] ||
                 fail "canonical release template is missing: $template_dir/$canonical.json"
-            grep -Eq "\"FileName\"[[:space:]]*:[[:space:]]*\"$canonical\"" "$template_dir/$canonical.json" ||
-                fail "release template FileName does not match canonical filename: $template_dir/$canonical.json"
         done
         for obsolete in BS4142_1-3.json ENV3RD.json NAWOCT.json; do
             [ ! -e "$template_dir/$obsolete" ] ||
