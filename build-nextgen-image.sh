@@ -661,10 +661,23 @@ build_product()
                 6.18-bringup)
                     for artifact in \
                         boot.bin u-boot.bin zImage nextgen.dtb uboot.env \
-                        boot.vfat rootfs.ext4 sdcard.img write-sd-card.sh
+                        boot.vfat sdcard.img write-sd-card.sh
                     do
                         [ ! -e "$out/images/$artifact" ] || cp -a "$out/images/$artifact" "$artifact_dir/"
                     done
+
+                    # Buildroot exposes ext4 as rootfs.ext4 -> rootfs.ext2.
+                    # A deployable artifact snapshot must be self-contained,
+                    # so materialize the symlink target as a real rootfs.ext4.
+                    [ -e "$out/images/rootfs.ext4" ] || {
+                        echo "error: bring-up rootfs.ext4 is missing" >&2
+                        exit 1
+                    }
+                    cp -L "$out/images/rootfs.ext4" "$artifact_dir/rootfs.ext4"
+                    [ -f "$artifact_dir/rootfs.ext4" ] && [ ! -L "$artifact_dir/rootfs.ext4" ] || {
+                        echo "error: bring-up snapshot rootfs.ext4 is not self-contained" >&2
+                        exit 1
+                    }
                     ;;
             esac
 
