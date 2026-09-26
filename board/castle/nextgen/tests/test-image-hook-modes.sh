@@ -108,6 +108,7 @@ WRAPPER="$BUILDROOT/build-nextgen-image.sh"
 BRINGUP_POST="$BUILDROOT/board/castle/nextgen/post-build-bringup.sh"
 BRINGUP_INIT="$BUILDROOT/board/castle/nextgen/S01NextGenBringup"
 BRINGUP_FLOW="$BUILDROOT/board/castle/nextgen/nextgen-bringup.sh"
+BRINGUP_SCREEN="$BUILDROOT/board/castle/nextgen/nextgen-bringup-screen"
 
 grep -Fq 'bring-up profile requires a matching production provision bundle' "$WRAPPER" &&
 grep -Fq 'build_arm_provisioning="YES-I-HAVE-HARDWARE-TESTED-NOR-UBI-BOOT"' "$WRAPPER" &&
@@ -147,6 +148,20 @@ do
 done
 grep -Fq 'log "stage: $stage"' "$PROVISIONER" || {
     echo "FAIL: LCD provisioning stages are not mirrored to the SD run log" >&2
+    exit 1
+}
+grep -Fq 'log "stage: $1"' "$BRINGUP_FLOW" || {
+    echo "FAIL: early bring-up LCD stages are not mirrored to the SD run log" >&2
+    exit 1
+}
+grep -Fq 'fbcon scrolls naturally' "$BRINGUP_SCREEN" &&
+grep -Fq "printf '   %s\\n' \"\$stage\" > \"\$TTY\"" "$BRINGUP_SCREEN" || {
+    echo "FAIL: bring-up progress no longer appends one stage per LCD line" >&2
+    exit 1
+}
+grep -Fq "paint '30;42'" "$BRINGUP_SCREEN" &&
+grep -Fq "paint '37;41'" "$BRINGUP_SCREEN" || {
+    echo "FAIL: bring-up terminal green/red repaint behavior regressed" >&2
     exit 1
 }
 
