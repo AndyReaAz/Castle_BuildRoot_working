@@ -281,6 +281,13 @@ fi
     echo "error: NextGen timezone database is missing Etc/UTC" >&2
     exit 1
 }
+if [ "$STORAGE_SCHEMA" = ro-persist-v1 ]; then
+    # Incremental RO builds may inherit the intentional runtime symlink from
+    # the previous post-build-ro pass. Normalize common staging to Buildroot's
+    # valid UTC default; post-build-ro will replace it with the /run link.
+    rm -f "$TARGET_DIR/etc/localtime"
+    ln -s ../usr/share/zoneinfo/Etc/UTC "$TARGET_DIR/etc/localtime"
+fi
 [ -e "$TARGET_DIR/etc/localtime" ] || {
     echo "error: NextGen /etc/localtime is missing or dangling" >&2
     exit 1
