@@ -498,6 +498,21 @@ if [ ! -x "$APP_BINARY" ]; then
     exit 1
 fi
 
+# The Application embeds its source revision into the executable for field
+# diagnostics.  Mtime checks alone cannot detect an incremental build that
+# reused the two objects carrying NEXTGEN_GIT_COMMIT after switching commits.
+APP_SOURCE_REV="$(git -C "$APP_DIR" rev-parse --short=12 HEAD 2>/dev/null || true)"
+[ -n "$APP_SOURCE_REV" ] || {
+    echo "error: cannot determine Application source revision from $APP_DIR" >&2
+    exit 1
+}
+grep -aFq "$APP_SOURCE_REV" "$APP_BINARY" || {
+    echo "error: NextGen application provenance is stale: $APP_BINARY" >&2
+    echo "       expected embedded git revision: $APP_SOURCE_REV" >&2
+    echo "       rebuild the $PRODUCT application before rebuilding the image" >&2
+    exit 1
+}
+
 # Never silently package an older application binary after switching branches
 # or changing startup/UI code.
 STALE_SOURCE="$(
