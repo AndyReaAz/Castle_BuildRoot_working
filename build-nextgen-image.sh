@@ -422,7 +422,31 @@ build_product()
     product="$1"
     shift
 
-    out="$(nextgen_buildroot_out "$product")"
+    requested_out="$(nextgen_buildroot_out "$product")"
+
+    # A normal Buildroot O= tree contains absolute paths in host tools (GCC,
+    # fakeroot and others) and must not be moved after it has been populated.
+    # A stable, human-friendly symlink is fine: resolve it before invoking
+    # Buildroot so the O= path remains the original physical directory.
+    if [ -e "$requested_out" ]; then
+        out="$(readlink -f "$requested_out")"
+    else
+        out="$requested_out"
+    fi
+
+    cross_gcc="$out/host/bin/arm-buildroot-linux-gnueabihf-gcc"
+    if [ -x "$cross_gcc" ]; then
+        recorded_sysroot="$("$cross_gcc" -print-sysroot 2>/dev/null || true)"
+        expected_sysroot="$out/host/arm-buildroot-linux-gnueabihf/sysroot"
+        if [ -n "$recorded_sysroot" ] && [ "$recorded_sysroot" != "$expected_sysroot" ]; then
+            echo "error: populated Buildroot output tree has been moved and is not relocatable" >&2
+            echo "       selected tree:  $out" >&2
+            echo "       GCC sysroot:     $recorded_sysroot" >&2
+            echo "       expected:        $expected_sysroot" >&2
+            echo "       restore the tree to its original physical path; use a symlink for any neutral alias" >&2
+            exit 1
+        fi
+    fi
 
     make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
 
