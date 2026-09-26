@@ -100,3 +100,28 @@ grep -Fq 'nextgen.env=bringup' "$MANUAL_FLASH" || {
 
 echo "PASS: provisioning preflight completes before the arm gate"
 echo "PASS: flash writers require the explicit bring-up environment"
+
+
+# RO-root ownership invariants used by engineering access and network identity.
+RO_POST="$BUILDROOT/board/castle/nextgen/post-build-ro.sh"
+RO_VERIFY="$BUILDROOT/board/castle/nextgen/verify-target-ro-layout.sh"
+NM_CONF="$BUILDROOT/board/castle/nextgen/rootfs-overlay/etc/NetworkManager/conf.d/10-nextgen-unmanaged.conf"
+
+/bin/sh -n "$RO_POST"
+/bin/sh -n "$RO_VERIFY"
+
+grep -Fq 'ln -s /persist/os/ssh/root "$TARGET_DIR/root/.ssh"' "$RO_POST" || {
+    echo "FAIL: RO image no longer persists root authorized_keys" >&2
+    exit 1
+}
+grep -Fq 'hostname-mode=none' "$NM_CONF" || {
+    echo "FAIL: NetworkManager may overwrite the Application-owned hostname" >&2
+    exit 1
+}
+grep -Fq 'root SSH authorized_keys path is not persistent' "$RO_VERIFY" || {
+    echo "FAIL: RO layout verifier does not check root SSH persistence" >&2
+    exit 1
+}
+
+echo "PASS: RO engineering SSH state is persistent"
+echo "PASS: Application retains ownership of the runtime hostname"
