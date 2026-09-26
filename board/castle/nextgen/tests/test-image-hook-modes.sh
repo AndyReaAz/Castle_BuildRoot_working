@@ -116,15 +116,18 @@ grep -Fq 'NEXTGEN_ARM_PROVISIONING="$build_arm_provisioning"' "$WRAPPER" || {
     exit 1
 }
 grep -Fq '/dev/mmcblk0p3 /sdcard ext4 defaults 0 2' "$BRINGUP_POST" &&
-grep -Fq 'nextgen-bringup.log' "$BRINGUP_INIT" &&
+grep -Fq 'run-$RUN_ID-inprogress.log' "$BRINGUP_INIT" &&
+grep -Fq 'run-$RUN_ID-pass.log' "$BRINGUP_INIT" &&
+grep -Fq 'run-$RUN_ID-fail.log' "$BRINGUP_INIT" &&
+grep -Fq 'sequence=%s' "$BRINGUP_INIT" &&
 grep -Fq 'NEXTGEN_BRINGUP_LOG' "$BRINGUP_FLOW" &&
 grep -Fq 'NEXTGEN_BRINGUP_LOG' "$PROVISIONER" || {
-    echo "FAIL: bring-up SD logging path regressed" >&2
+    echo "FAIL: bring-up SD logging path/naming regressed" >&2
     exit 1
 }
 
 echo "PASS: factory bring-up profile requires and arms a production bundle"
-echo "PASS: bring-up writes a persistent log to the SD data partition"
+echo "PASS: bring-up uses numbered persistent run logs on the SD data partition"
 
 
 # RO-root ownership invariants used by engineering access and network identity.
