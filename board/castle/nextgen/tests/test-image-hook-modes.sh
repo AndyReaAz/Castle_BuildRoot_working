@@ -8,6 +8,12 @@ BUILDROOT="${1:-$(CDPATH= cd -- "$HERE/../../../.." && pwd)}"
 set -- "$BUILDROOT"/configs/castle_nextgen*_defconfig
 set -f
 [ -f "$1" ] || { echo 'FAIL: no NextGen defconfigs found' >&2; exit 1; }
+
+/bin/sh -n "$BUILDROOT/build-nextgen-image.sh" || {
+    echo 'FAIL: build-nextgen-image.sh shell syntax' >&2
+    exit 1
+}
+echo "PASS: build-nextgen-image.sh parses cleanly"
 HOOKS="$(sed -n \
     -e 's/^BR2_ROOTFS_POST_BUILD_SCRIPT="\([^"]*\)"$/\1/p' \
     -e 's/^BR2_ROOTFS_POST_FAKEROOT_SCRIPT="\([^"]*\)"$/\1/p' \
