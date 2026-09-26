@@ -25,7 +25,9 @@ progress()
     stage="$*"
     log "stage: $stage"
     if [ -x "$SCREEN" ]; then
-        "$SCREEN" progress "NEXTGEN BRING-UP" "" "$stage" 2>/dev/null ||             log "warning: could not update LCD progress display"
+        if ! "$SCREEN" progress "NEXTGEN BRING-UP" "" "$stage" 2>/dev/null; then
+            log "warning: could not update LCD progress display"
+        fi
     else
         log "warning: bring-up screen helper is unavailable"
     fi
