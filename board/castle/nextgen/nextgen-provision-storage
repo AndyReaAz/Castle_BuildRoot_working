@@ -13,7 +13,7 @@ log()
 
 not_armed()
 {
-    log "production storage programming is not armed in this build"
+    log "production storage preflight passed; programming is not armed in this build"
     return 64
 }
 
@@ -29,7 +29,29 @@ mtd_by_label()
     line="$(grep " \"$label\"$" /proc/mtd 2>/dev/null | head -n 1)"
     [ -n "$line" ] || return 1
     name="${line%%:*}"
-    printf '/dev/%s\n' "$name"
+    dev="/dev/$name"
+    [ -c "$dev" ] || {
+        fail "$label resolves to $dev but the character device is missing"
+        return 1
+    }
+    printf '%s\n' "$dev"
+}
+
+require_bringup_environment()
+{
+    [ "$(id -u)" -eq 0 ] || {
+        fail "storage provisioning must run as root"
+        return 1
+    }
+
+    cmdline="$(cat /proc/cmdline 2>/dev/null || true)"
+    case " $cmdline " in
+        *" nextgen.env=bringup "*) ;;
+        *)
+            fail "destructive provisioning is allowed only from the bring-up SD environment"
+            return 1
+            ;;
+    esac
 }
 
 mtd_size_hex()
@@ -205,12 +227,8 @@ verify_boot_ubi()
 
 main()
 {
-    [ -f "$ARM_MARKER" ] || {
-        not_armed
-        return $?
-    }
-
-    for cmd in sha256sum awk grep head wc tr dd cat flash_erase mtd_debug                ubiformat ubiattach ubidetach mount umount
+    for cmd in id sha256sum awk grep head wc tr dd cat flash_erase mtd_debug \
+               ubiformat ubiattach ubidetach mount umount
     do
         command -v "$cmd" >/dev/null 2>&1 || {
             fail "required command is unavailable: $cmd"
@@ -262,6 +280,17 @@ main()
     envdev="$(mtd_by_label uboot-env)" || return 1
     bootdev="$(mtd_by_label boot)" || return 1
     rootdev="$(mtd_by_label rootfs)" || return 1
+
+    # Finish every non-destructive check before consulting the arming marker.
+    # A normal service card therefore proves its embedded bundle, target MTD
+    # layout and boot context even though it cannot modify flash.
+    require_bringup_environment || return 1
+
+    arm_value="$(cat "$ARM_MARKER" 2>/dev/null || true)"
+    [ "$arm_value" = "hardware-tested-nor-ubi-v1" ] || {
+        not_armed
+        return $?
+    }
 
     rm -rf "$TMP"
     mkdir -p "$TMP"
