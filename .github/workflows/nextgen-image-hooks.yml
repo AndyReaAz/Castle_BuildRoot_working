@@ -8,6 +8,9 @@ on:
       - configs/castle_nextgen*_defconfig
       - build-nextgen-image.sh
       - board/castle/nextgen/post-*.sh
+      - board/castle/nextgen/persist-init-ro.sh
+      - board/castle/nextgen/verify-target-*.sh
+      - board/castle/nextgen/rootfs-overlay/etc/NetworkManager/conf.d/10-nextgen-unmanaged.conf
       - board/castle/nextgen/tests/test-image-hook-modes.sh
       - board/castle/nextgen/tests/test-shared-build-output.sh
       - .github/workflows/nextgen-image-hooks.yml
