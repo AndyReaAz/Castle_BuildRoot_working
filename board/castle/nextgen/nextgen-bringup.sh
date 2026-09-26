@@ -5,10 +5,18 @@ SCREEN=/opt/nextgen/platform/bin/nextgen-bringup-screen
 PROVISIONER=/opt/nextgen/platform/bin/nextgen-provision-storage
 FUSE_ADDR=0xf804c060
 FUSE_EXPECTED=0x00060B3F
+LOG_FILE="${NEXTGEN_BRINGUP_LOG:-}"
+
+append_log()
+{
+    [ -z "$LOG_FILE" ] || printf '%s\n' "$1" >> "$LOG_FILE"
+}
 
 log()
 {
-    echo "BRINGUP: $*"
+    message="BRINGUP: $*"
+    echo "$message"
+    append_log "$message"
 }
 
 screen_progress()
