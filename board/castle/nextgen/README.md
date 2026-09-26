@@ -266,6 +266,14 @@ Each snapshot includes a generated `SHA256SUMS`, so the next product/backend
 pass can safely replace `output-nextgen-shared/images` without losing the
 previous verified result.
 
+A populated Buildroot `O=` directory must not be physically renamed or moved:
+host tools such as GCC and fakeroot contain absolute paths back into that tree.
+For an existing populated tree, keep its original physical directory and use
+`NEXTGEN_SHARED_BUILDROOT_OUT`, or create a neutral symlink such as
+`output-nextgen-shared -> output-nextgen-sound`.  The wrapper resolves such a
+symlink before invoking Buildroot and rejects an already-relocated tree when the
+cross-compiler sysroot no longer matches its physical path.
+
 The RO post-build/post-image checks deliberately fail the build for stale
 Application binaries, wrong storage ownership, missing factory content,
 missing HPD/template fallbacks, invalid helper scripts or a kernel without the
