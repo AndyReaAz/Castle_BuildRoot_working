@@ -228,16 +228,32 @@ Rebuild the matching Application, then from Buildroot run:
 ./build-nextgen-image.sh 6.18-ro vibra
 ```
 
-The important outputs are:
+The RO SD and production-flash profiles share one Buildroot output tree because
+their package/toolchain universe is identical; product and storage differences
+are applied by the late staging/image hooks.  By default that tree is
+`output-nextgen-shared`.  During transition an existing populated tree can be
+reused without rebuilding packages, for example:
+
+```sh
+NEXTGEN_SHARED_BUILDROOT_OUT="$PWD/output-nextgen-sound" \
+    ./build-nextgen-image.sh 6.18-ro sound
+```
+
+The important RO-SD outputs in the selected shared tree are:
 
 ```text
-output-nextgen-sound/images/boot.vfat
-output-nextgen-sound/images/uboot.env
-output-nextgen-sound/images/rootfs.squashfs
-output-nextgen-sound/images/persist.ext4
-output-nextgen-sound/images/sdcard.img
-output-nextgen-sound/images/write-sd-card.sh
+images/boot.vfat
+images/uboot.env
+images/rootfs.squashfs
+images/persist.ext4
+images/sdcard.img
+images/write-sd-card.sh
 ```
+
+Switching sound/vibra or SD/NAND on that same tree reruns final staging and
+image generation but reuses the already-built host tools, toolchain and target
+packages.  The bring-up image keeps one separate shared output tree because its
+package/rootfs policy is genuinely different.
 
 The RO post-build/post-image checks deliberately fail the build for stale
 Application binaries, wrong storage ownership, missing factory content,
