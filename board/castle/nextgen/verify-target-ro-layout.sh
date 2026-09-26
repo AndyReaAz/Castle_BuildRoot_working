@@ -104,6 +104,17 @@ if [ "$PRODUCT" = sound ]; then
             grep -Eq '"ModelTypeCompatibility"[[:space:]]*:[[:space:]]*[1-9][0-9]*' "$template" ||
                 fail "certified release template lacks explicit model-type compatibility: $template"
         done
+
+        for canonical in BS4142_3RD ENV_3RD NAW_OCT; do
+            [ -s "$template_dir/$canonical.json" ] ||
+                fail "canonical release template is missing: $template_dir/$canonical.json"
+            grep -Eq "\"FileName\"[[:space:]]*:[[:space:]]*\"$canonical\"" "$template_dir/$canonical.json" ||
+                fail "release template FileName does not match canonical filename: $template_dir/$canonical.json"
+        done
+        for obsolete in BS4142_1-3.json ENV3RD.json NAWOCT.json; do
+            [ ! -e "$template_dir/$obsolete" ] ||
+                fail "obsolete release template filename survived staging: $template_dir/$obsolete"
+        done
     done
 
     [ -z "$(find "$SLOT_SOURCE/Templates" "$ROOT/factory/sound/Templates" "$PERSIST_SEED/data/sound/Templates" -type f -name '*.tpl' -print -quit)" ] ||
