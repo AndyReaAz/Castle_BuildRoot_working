@@ -125,6 +125,55 @@ fi
 [ "$(readlink "$TARGET_DIR/etc/umtprd/umtprd.conf")" = /run/umtprd/umtprd.conf ] ||
     fail "uMTPrd configuration is not runtime-backed"
 
+grep -Eq '^[[:space:]]*hostname-mode[[:space:]]*=[[:space:]]*none[[:space:]]*[[:space:]]\+/[[:space:]]\+squashfs[[:space:]]\+ro' "$TARGET_DIR/etc/fstab" ||
+    fail "root is not declared read-only SquashFS"
+case "$BACKEND" in
+    sd-ext4)
+        grep -q '^/dev/mmcblk0p3[[:space:]]\+/persist[[:space:]]\+ext4' "$TARGET_DIR/etc/fstab" ||
+            fail "SD persist partition is missing"
+        [ ! -e "$TARGET_DIR/etc/nextgen-sd-data-only" ] ||
+            fail "SD-root image incorrectly declares SD data-only mode"
+        ;;
+    nand-ubi)
+        grep -q '^ubi0:persist[[:space:]]\+/persist[[:space:]]\+ubifs' "$TARGET_DIR/etc/fstab" ||
+            fail "NAND persist UBI volume is missing"
+        [ -f "$TARGET_DIR/etc/nextgen-sd-data-only" ] ||
+            fail "flash-root image does not declare SD data-only mode"
+        ;;
+    *) fail "unknown storage backend $BACKEND" ;;
+esac
+! grep -q '^[^#].*[[:space:]]/sdcard[[:space:]]' "$TARGET_DIR/etc/fstab" ||
+    fail "/sdcard must remain Application-mounted for fsck/identity recovery"
+grep -q '/opt/nextgen/platform/bin/persist-init.sh' "$TARGET_DIR/etc/inittab" ||
+    fail "persist init is not in sysinit"
+! grep -q '^[^#].*-o remount,rw /$' "$TARGET_DIR/etc/inittab" ||
+    fail "root remount-rw remains enabled"
+
+for helper in persist-init.sh nextgen-slot-common.sh nextgen-update-install nextgen-update-accept; do
+    [ -x "$ROOT/platform/bin/$helper" ] || fail "platform helper $helper missing"
+done
+case "$BACKEND" in
+    sd-ext4)
+        [ -x "$TARGET_DIR/sbin/e2fsck" ] ||
+            fail "target e2fsck missing for ext4 persist recovery"
+        ;;
+    nand-ubi)
+        [ -x "$TARGET_DIR/usr/sbin/fsck.ubifs" ] || [ -x "$TARGET_DIR/sbin/fsck.ubifs" ] ||
+            fail "target fsck.ubifs missing for NAND persist recovery"
+        ;;
+esac
+
+[ ! -e "$ROOT/app/$PRODUCT/slotA" ] ||
+    fail "directory slot leaked into immutable root"
+[ ! -e "$ROOT/data/$PRODUCT/Settings0.json" ] ||
+    fail "mutable settings leaked into immutable root"
+[ ! -e "$ROOT/data/$PRODUCT/SettingsJSON0.dat" ] ||
+    fail "obsolete settings format leaked into immutable root"
+
+echo "NextGen RO target layout OK: product=$PRODUCT backend=$BACKEND"
+     "$TARGET_DIR/etc/NetworkManager/conf.d/10-nextgen-unmanaged.conf" ||
+    fail "NetworkManager may overwrite the Application-owned hostname"
+
 grep -q '^/dev/root[[:space:]]\+/[[:space:]]\+squashfs[[:space:]]\+ro' "$TARGET_DIR/etc/fstab" ||
     fail "root is not declared read-only SquashFS"
 case "$BACKEND" in
