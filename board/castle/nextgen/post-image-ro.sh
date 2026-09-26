@@ -73,7 +73,15 @@ esac
 mkdir -p "$APP_DIR" "$STATE_DIR"
 rm -f     "$APP_DIR/slotA.sqfs" "$APP_DIR/slotA.meta" "$APP_DIR/slotA.sig"     "$APP_DIR/slotB.sqfs" "$APP_DIR/slotB.meta" "$APP_DIR/slotB.sig"
 
-SOURCE_DATE_EPOCH=0 "$MKSQUASHFS" "$SLOT_SOURCE" "$SLOT_IMAGE"     -noappend -all-root -no-xattrs -comp lzo -b 131072     -no-progress -mkfs-time 0 -all-time 0 >/dev/null
+(
+    # Recent squashfs-tools rejects combining SOURCE_DATE_EPOCH with explicit
+    # timestamp options. Keep the image deterministic using the command-line
+    # epoch controls and isolate ourselves from Buildroot's reproducibility env.
+    unset SOURCE_DATE_EPOCH
+    "$MKSQUASHFS" "$SLOT_SOURCE" "$SLOT_IMAGE" \
+        -noappend -all-root -no-xattrs -comp lzo -b 131072 \
+        -no-progress -mkfs-time 0 -all-time 0 >/dev/null
+)
 
 chmod 0444 "$SLOT_IMAGE"
 SLOT_BYTES="$(wc -c < "$SLOT_IMAGE" | tr -d '[:space:]')"
