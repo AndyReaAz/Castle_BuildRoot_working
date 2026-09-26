@@ -6,8 +6,10 @@ on:
     branches: [chatgpt/ro-root-image-slots]
     paths:
       - configs/castle_nextgen*_defconfig
+      - build-nextgen-image.sh
       - board/castle/nextgen/post-*.sh
       - board/castle/nextgen/tests/test-image-hook-modes.sh
+      - board/castle/nextgen/tests/test-shared-build-output.sh
       - .github/workflows/nextgen-image-hooks.yml
 
 permissions:
@@ -23,3 +25,5 @@ jobs:
           persist-credentials: false
       - name: Check hook modes and shell syntax without building packages
         run: /bin/sh board/castle/nextgen/tests/test-image-hook-modes.sh
+      - name: Check shared Buildroot output topology without building packages
+        run: /bin/sh board/castle/nextgen/tests/test-shared-build-output.sh
