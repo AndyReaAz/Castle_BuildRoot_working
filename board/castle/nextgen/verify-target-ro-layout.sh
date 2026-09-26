@@ -99,6 +99,10 @@ if [ "$PRODUCT" = sound ]; then
                 fail "release template lacks NextGenTemplate metadata: $template"
             grep -Eq '"SchemaVersion"[[:space:]]*:[[:space:]]*1([,[:space:]}]|$)' "$template" ||
                 fail "release template lacks schema version 1: $template"
+            grep -Eq '"Product"[[:space:]]*:[[:space:]]*"sound"' "$template" ||
+                fail "non-sound release template leaked into sound slot: $template"
+            grep -Eq '"ModelTypeCompatibility"[[:space:]]*:[[:space:]]*[1-9][0-9]*' "$template" ||
+                fail "certified release template lacks explicit model-type compatibility: $template"
         done
     done
 
