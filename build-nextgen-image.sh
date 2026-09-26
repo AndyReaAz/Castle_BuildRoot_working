@@ -450,13 +450,13 @@ build_product()
 
     make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
 
+    build_provision_bundle="${NEXTGEN_PROVISION_BUNDLE_DIR:-}"
     if [ "$PROFILE" = "6.18-bringup" ]; then
-        if [ -z "${NEXTGEN_PROVISION_BUNDLE_DIR:-}" ]; then
+        if [ -z "$build_provision_bundle" ]; then
             artifact_root="${NEXTGEN_ARTIFACT_ROOT:-$ROOT/output-nextgen-artifacts}"
             candidate_bundle="$artifact_root/$product/6.18-flash/production-provision"
             if [ -d "$candidate_bundle" ]; then
-                NEXTGEN_PROVISION_BUNDLE_DIR="$candidate_bundle"
-                export NEXTGEN_PROVISION_BUNDLE_DIR
+                build_provision_bundle="$candidate_bundle"
             fi
         fi
         for sym in \
@@ -532,6 +532,7 @@ build_product()
     NEXTGEN_KERNEL_PROFILE="$KERNEL_PROFILE" \
     NEXTGEN_STORAGE_SCHEMA="$STORAGE_SCHEMA" \
     NEXTGEN_STORAGE_BACKEND="$STORAGE_BACKEND" \
+    NEXTGEN_PROVISION_BUNDLE_DIR="$build_provision_bundle" \
         make -C "$ROOT" O="$out" "$@"
 
     if [ "$PROFILE" = "6.18-nand" ]; then
@@ -591,7 +592,7 @@ build_product()
                 exit 1
             }
         done
-        if [ -n "${NEXTGEN_PROVISION_BUNDLE_DIR:-}" ]; then
+        if [ -n "$build_provision_bundle" ]; then
             [ -f "$out/target/opt/nextgen/provision/manifest.sha256" ] || {
                 echo "error: bring-up rootfs did not stage the production bundle" >&2
                 exit 1
