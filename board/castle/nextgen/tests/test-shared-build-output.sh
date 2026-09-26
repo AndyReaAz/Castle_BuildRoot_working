@@ -21,14 +21,13 @@ bringup_sound="$(plan 6.18-bringup sound)"
 bringup_vibra="$(plan 6.18-bringup vibra)"
 
 shared="$ROOT/output-nextgen-shared"
-bringup="$ROOT/output-nextgen-bringup"
 
 [ "$ro_sound" = "sound=$shared" ]
 [ "$ro_vibra" = "vibra=$shared" ]
 [ "$flash_sound" = "sound=$shared" ]
 [ "$flash_vibra" = "vibra=$shared" ]
-[ "$bringup_sound" = "sound=$bringup" ]
-[ "$bringup_vibra" = "vibra=$bringup" ]
+[ "$bringup_sound" = "sound=$shared" ]
+[ "$bringup_vibra" = "vibra=$shared" ]
 
 both="$(plan 6.18-ro both)"
 printf '%s\n' "$both" | grep -qx "sound=$shared"
@@ -39,8 +38,7 @@ actual="$(NEXTGEN_PLAN_ONLY=1 NEXTGEN_SHARED_BUILDROOT_OUT="$override" \
     "$WRAPPER" 6.18-flash vibra)"
 [ "$actual" = "vibra=$override" ]
 
-echo "PASS: RO/flash products share one Buildroot output tree"
-echo "PASS: bring-up products share one separate Buildroot output tree"
+echo "PASS: RO/flash/bring-up products share one Buildroot output tree"
 echo "PASS: existing populated shared output can be selected explicitly"
 
 # Product changes must rebuild the complete NextGen-owned hierarchy rather than
@@ -50,6 +48,10 @@ grep -q 'candidate_bundle="\$artifact_root/\$product/6.18-flash/production-provi
 grep -q 'NEXTGEN_PRODUCT=\$expected_product' "$ROOT/board/castle/nextgen/post-build-bringup.sh"
 grep -q 'build_provision_bundle=' "$WRAPPER"
 ! grep -q 'export NEXTGEN_PROVISION_BUNDLE_DIR' "$WRAPPER"
+grep -q 'persist-init.sh|d' "$ROOT/board/castle/nextgen/post-build.sh"
+grep -q 'nextgen-bringup-image' "$ROOT/board/castle/nextgen/post-build.sh"
+grep -q 'nextgen-provision-armed' "$ROOT/board/castle/nextgen/post-build.sh"
 
+echo "PASS: shared target is normalized between production and bring-up"
 echo "PASS: shared target is fully restaged between products"
 echo "PASS: bring-up consumes the matching product snapshot"
