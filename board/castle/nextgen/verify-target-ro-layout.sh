@@ -65,6 +65,11 @@ grep -qx 'format=4' "$SLOT_SOURCE/bundle.info" ||
 for osdir in NetworkManager/system-connections NetworkManager/state dbus chrony ssh seedrng; do
     [ -d "$PERSIST_SEED/os/$osdir" ] || fail "persistent OS state $osdir missing"
 done
+[ -d "$PERSIST_SEED/os/ssh/root" ] ||
+    fail "persistent root SSH state directory missing"
+[ -L "$TARGET_DIR/root/.ssh" ] &&
+[ "$(readlink "$TARGET_DIR/root/.ssh")" = /persist/os/ssh/root ] ||
+    fail "root SSH authorized_keys path is not persistent"
 grep -q 'bind_one "\$PERSIST/os/chrony" /var/lib/chrony' "$ROOT/platform/bin/persist-init.sh" ||
     fail "chrony state is not rebound to persistent storage"
 
