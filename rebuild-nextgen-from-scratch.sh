@@ -88,12 +88,21 @@ verify_application()
     "$readelf" -h "$bin" > "$LOG_DIR/app-$product-elf-header.txt"
     "$readelf" -A "$bin" > "$LOG_DIR/app-$product-arm-attrs.txt"
     "$readelf" -d "$bin" > "$LOG_DIR/app-$product-dynamic.txt"
+    "$readelf" -S "$bin" > "$LOG_DIR/app-$product-sections.txt"
 
     grep -Eq 'Machine:[[:space:]]+ARM' "$LOG_DIR/app-$product-elf-header.txt"
     grep -Eq 'Tag_ABI_VFP_args:[[:space:]]+VFP registers' "$LOG_DIR/app-$product-arm-attrs.txt"
     grep -q 'Shared library: \[libcurl.so.4\]' "$LOG_DIR/app-$product-dynamic.txt"
     grep -q 'Shared library: \[libasound.so.2\]' "$LOG_DIR/app-$product-dynamic.txt"
     grep -q 'Shared library: \[libpng16.so.16\]' "$LOG_DIR/app-$product-dynamic.txt"
+    grep -q '\.ARM\.exidx' "$LOG_DIR/app-$product-sections.txt" || {
+        echo "error: $product Application lost ARM unwind tables" >&2
+        exit 1
+    }
+    if grep -q '\.debug_info' "$LOG_DIR/app-$product-sections.txt"; then
+        echo "error: release $product Application still contains .debug_info" >&2
+        exit 1
+    fi
 
     sha256sum "$bin" | tee "$LOG_DIR/app-$product.sha256"
 }
