@@ -99,6 +99,7 @@ BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
 BR2_TARGET_ROOTFS_EXT2_SIZE="256M"
 BR2_TARGET_ROOTFS_EXT2_RESBLKS=0
+# BR2_TARGET_ROOTFS_TAR is not set
 
 # The service SD rootfs is intentionally larger than production NAND so it can
 # carry a separately built rootfs.ubi provisioning bundle. It does not build a
