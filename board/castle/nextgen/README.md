@@ -250,10 +250,11 @@ images/sdcard.img
 images/write-sd-card.sh
 ```
 
-Switching sound/vibra or SD/NAND on that same tree reruns final staging and
-image generation but reuses the already-built host tools, toolchain and target
-packages.  The bring-up image keeps one separate shared output tree because its
-package/rootfs policy is genuinely different.
+Switching sound/vibra, SD/NAND or bring-up on that same tree reruns final
+staging and image generation but reuses the already-built host tools, toolchain
+and target packages. Bring-up uses a different kernel/rootfs format and hook
+policy, but its Buildroot package universe is the same; the common post-build
+step explicitly normalizes RO-only state when switching profiles.
 
 After each verified 6.18 RO/flash/bring-up build, the wrapper snapshots the
 deployable artifacts outside the mutable shared O= tree under:
