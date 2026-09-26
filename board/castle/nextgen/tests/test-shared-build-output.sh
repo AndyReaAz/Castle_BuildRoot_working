@@ -42,3 +42,12 @@ actual="$(NEXTGEN_PLAN_ONLY=1 NEXTGEN_SHARED_BUILDROOT_OUT="$override" \
 echo "PASS: RO/flash products share one Buildroot output tree"
 echo "PASS: bring-up products share one separate Buildroot output tree"
 echo "PASS: existing populated shared output can be selected explicitly"
+
+# Product changes must rebuild the complete NextGen-owned hierarchy rather than
+# layering one product over another in the mutable shared target tree.
+grep -q 'rm -rf "\$NEXTGEN_ROOT"' "$ROOT/board/castle/nextgen/post-build.sh"
+grep -q 'candidate_bundle="\$artifact_root/\$product/6.18-flash/production-provision"' "$WRAPPER"
+grep -q 'NEXTGEN_PRODUCT=\$expected_product' "$ROOT/board/castle/nextgen/post-build-bringup.sh"
+
+echo "PASS: shared target is fully restaged between products"
+echo "PASS: bring-up consumes the matching product snapshot"
