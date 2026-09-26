@@ -5,10 +5,18 @@ BUNDLE=/opt/nextgen/provision
 ARM_MARKER=/etc/nextgen-provision-armed
 TMP=/tmp/nextgen-provision
 UBOOT_TRAILER_OFFSET=$((0x137ff0))
+LOG_FILE="${NEXTGEN_BRINGUP_LOG:-}"
+
+append_log()
+{
+    [ -z "$LOG_FILE" ] || printf '%s\n' "$1" >> "$LOG_FILE"
+}
 
 log()
 {
-    echo "BRINGUP: $*"
+    message="BRINGUP: $*"
+    echo "$message"
+    append_log "$message"
 }
 
 not_armed()
@@ -19,7 +27,9 @@ not_armed()
 
 fail()
 {
-    log "storage provisioning failed: $*" >&2
+    message="BRINGUP: storage provisioning failed: $*"
+    echo "$message" >&2
+    append_log "$message"
     return 1
 }
 
@@ -263,6 +273,7 @@ main()
     case "${NEXTGEN_PRODUCT:-}" in sound|vibra) ;; *)
         fail "invalid production product"; return 1 ;;
     esac
+    log "validated production bundle: product=$NEXTGEN_PRODUCT backend=$NEXTGEN_STORAGE_BACKEND schema=$NEXTGEN_STORAGE_SCHEMA"
 
     require_mtd_size at91bootstrap "$((0x00008000))" || return 1
     require_mtd_size uboot "$((0x00138000))" || return 1
