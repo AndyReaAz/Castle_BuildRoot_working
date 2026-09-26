@@ -2,6 +2,7 @@
 set -eu
 
 TTY="${NEXTGEN_BRINGUP_TTY:-/dev/tty1}"
+PROGRESS_STATE=/run/nextgen-bringup-screen.progress
 
 wait_for_lcd()
 {
@@ -16,12 +17,27 @@ wait_for_lcd()
     return 1
 }
 
+console_rows()
+{
+    rows="$(stty size < "$TTY" 2>/dev/null | awk '{print $1}' || true)"
+    case "$rows" in
+        ''|*[!0-9]*|0) rows=0 ;;
+    esac
+    printf '%s\n' "$rows"
+}
+
+reset_progress_state()
+{
+    rm -f "$PROGRESS_STATE"
+}
+
 paint()
 {
     sgr="$1"
     shift
 
     wait_for_lcd || return 1
+    reset_progress_state
 
     {
         printf '\033[?25l'
@@ -35,10 +51,39 @@ paint()
     } > "$TTY"
 }
 
+progress()
+{
+    stage="$*"
+
+    wait_for_lcd || return 1
+
+    if [ ! -e "$PROGRESS_STATE" ]; then
+        rows="$(console_rows)"
+        {
+            printf '\033[?25l'
+            printf '\033[37;40m'
+            printf '\033[2J\033[H'
+            printf '\n'
+            printf '   NEXTGEN BRING-UP\n'
+            printf '\n'
+            printf '   %s\n' "$stage"
+        } > "$TTY"
+        {
+            printf 'rows=%s\n' "$rows"
+        } > "$PROGRESS_STATE"
+    else
+        printf '   %s\n' "$stage" > "$TTY"
+    fi
+}
+
 case "${1:-}" in
     progress)
         shift
-        paint '37;40' "$@"
+        [ "$#" -gt 0 ] || {
+            echo "Usage: $0 progress <stage>" >&2
+            exit 2
+        }
+        progress "$@"
         ;;
     success)
         shift
