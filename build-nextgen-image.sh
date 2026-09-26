@@ -475,7 +475,13 @@ build_product()
         done
         grep -q 'post-build-bringup.sh' "$out/.config" ||
             { echo "error: bring-up post-build hook is not configured" >&2; exit 1; }
-        if grep -q '^BR2_TARGET_ROOTFS_TAR=y
+        if grep -qx 'BR2_TARGET_ROOTFS_TAR=y' "$out/.config"; then
+            echo "error: bring-up Buildroot config unexpectedly enables unused rootfs.tar" >&2
+            exit 1
+        fi
+    fi
+
+    if [ "$STORAGE_SCHEMA" = "ro-persist-v1" ]; then
         for sym in \
             BR2_TARGET_ROOTFS_SQUASHFS \
             BR2_TARGET_ROOTFS_SQUASHFS4_LZO \
