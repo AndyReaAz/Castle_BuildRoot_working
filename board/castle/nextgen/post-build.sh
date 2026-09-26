@@ -190,13 +190,35 @@ fi
 # which runs after this common hook. Do not require or stage a measurement
 # Application, mutable product seed, updater slots or release assets.
 if [ "$STORAGE_SCHEMA" = bringup-sd-v1 ]; then
-    rm -rf "$NEXTGEN_ROOT/app" "$NEXTGEN_ROOT/data" "$NEXTGEN_ROOT/state"         "$NEXTGEN_ROOT/common/state"
+    # The same Buildroot O= tree is reused for RO production and bring-up.
+    # Undo every RO-only mutation that is not replaced by the normal overlay
+    # before the bring-up hook runs.
+    rm -rf "$NEXTGEN_ROOT/app" "$NEXTGEN_ROOT/data" "$NEXTGEN_ROOT/state" "$NEXTGEN_ROOT/common/state"
     mkdir -p "$PLATFORM_BIN" "$PLATFORM_SHARE" "$COMMON_SHARE"
-    rm -f "$TARGET_DIR/etc/init.d/S00NextGen" "$TARGET_DIR/etc/init.d/S55NextGen"         "$TARGET_DIR/root/NextGen"
+
+    rm -f         "$TARGET_DIR/etc/init.d/S00NextGen"         "$TARGET_DIR/etc/init.d/S55NextGen"         "$TARGET_DIR/etc/init.d/S01NextGenBringup"         "$TARGET_DIR/etc/nextgen-bringup-image"         "$TARGET_DIR/etc/nextgen-provision-armed"         "$TARGET_DIR/etc/nextgen-sd-data-only"         "$TARGET_DIR/etc/nextgen-platform-abi"         "$TARGET_DIR/etc/default/seedrng"         "$TARGET_DIR/root/NextGen"
     rm -rf "$TARGET_DIR/root/Exec"
+
+    # Remove the RO persist bootstrap line if this target previously came from
+    # a production pass. The rootfs overlay has already restored the normal
+    # bring-up fstab for this invocation.
+    if [ -f "$TARGET_DIR/etc/inittab" ]; then
+        sed -i '\|::sysinit:/opt/nextgen/platform/bin/persist-init.sh|d'             "$TARGET_DIR/etc/inittab"
+    fi
+
+    # RO images deliberately point timezone state into /run. Bring-up has a
+    # normal writable ext4 root and needs a valid standalone UTC default.
+    rm -f "$TARGET_DIR/etc/localtime" "$TARGET_DIR/etc/timezone"
+    ln -s ../usr/share/zoneinfo/Etc/UTC "$TARGET_DIR/etc/localtime"
+    printf '%s\n' Etc/UTC > "$TARGET_DIR/etc/timezone"
+
     echo "NextGen common staging complete: bring-up image (no measurement Application)"
     exit 0
 fi
+
+# A previous bring-up pass may have used this same shared target tree.
+# Production images must never inherit service-image startup or arming state.
+rm -f     "$TARGET_DIR/etc/init.d/S01NextGenBringup"     "$TARGET_DIR/etc/nextgen-bringup-image"     "$TARGET_DIR/etc/nextgen-provision-armed"
 
 # Development seed state is build input, not a temporary rootfs layout.
 # Stage it directly into the final mutable realms.
