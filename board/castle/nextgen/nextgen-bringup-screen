@@ -17,15 +17,6 @@ wait_for_lcd()
     return 1
 }
 
-console_rows()
-{
-    rows="$(stty size < "$TTY" 2>/dev/null | awk '{print $1}' || true)"
-    case "$rows" in
-        ''|*[!0-9]*|0) rows=0 ;;
-    esac
-    printf '%s\n' "$rows"
-}
-
 reset_progress_state()
 {
     rm -f "$PROGRESS_STATE"
@@ -58,7 +49,6 @@ progress()
     wait_for_lcd || return 1
 
     if [ ! -e "$PROGRESS_STATE" ]; then
-        rows="$(console_rows)"
         {
             printf '\033[?25l'
             printf '\033[37;40m'
@@ -68,10 +58,10 @@ progress()
             printf '\n'
             printf '   %s\n' "$stage"
         } > "$TTY"
-        {
-            printf 'rows=%s\n' "$rows"
-        } > "$PROGRESS_STATE"
+        : > "$PROGRESS_STATE"
     else
+        # Keep previous stages visible. fbcon scrolls naturally when the LCD
+        # runs out of text rows; success/failure repaint the whole screen.
         printf '   %s\n' "$stage" > "$TTY"
     fi
 }
