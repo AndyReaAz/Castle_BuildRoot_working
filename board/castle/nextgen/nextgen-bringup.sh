@@ -21,7 +21,7 @@ log()
 
 screen_progress()
 {
-    "$SCREEN" progress "NEXTGEN BRING-UP" "" "$1" 2>/dev/null
+    "$SCREEN" progress "$1" 2>/dev/null
 }
 
 fail()
