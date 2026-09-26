@@ -255,6 +255,17 @@ image generation but reuses the already-built host tools, toolchain and target
 packages.  The bring-up image keeps one separate shared output tree because its
 package/rootfs policy is genuinely different.
 
+After each verified 6.18 RO/flash/bring-up build, the wrapper snapshots the
+deployable artifacts outside the mutable shared O= tree under:
+
+```text
+output-nextgen-artifacts/<product>/<profile>/
+```
+
+Each snapshot includes a generated `SHA256SUMS`, so the next product/backend
+pass can safely replace `output-nextgen-shared/images` without losing the
+previous verified result.
+
 The RO post-build/post-image checks deliberately fail the build for stale
 Application binaries, wrong storage ownership, missing factory content,
 missing HPD/template fallbacks, invalid helper scripts or a kernel without the
