@@ -105,11 +105,18 @@ echo "PASS: flash writers require the explicit bring-up environment"
 # RO-root ownership invariants used by engineering access and network identity.
 RO_POST="$BUILDROOT/board/castle/nextgen/post-build-ro.sh"
 RO_VERIFY="$BUILDROOT/board/castle/nextgen/verify-target-ro-layout.sh"
+PERSIST_INIT="$BUILDROOT/board/castle/nextgen/persist-init-ro.sh"
 NM_CONF="$BUILDROOT/board/castle/nextgen/rootfs-overlay/etc/NetworkManager/conf.d/10-nextgen-unmanaged.conf"
 
 /bin/sh -n "$RO_POST"
 /bin/sh -n "$RO_VERIFY"
+/bin/sh -n "$PERSIST_INIT"
 
+grep -Fq 'mkdir -p' "$PERSIST_INIT" &&
+grep -Fq '"$PERSIST/os/ssh/root"' "$PERSIST_INIT" || {
+    echo "FAIL: persist init does not create root SSH state" >&2
+    exit 1
+}
 grep -Fq 'ln -s /persist/os/ssh/root "$TARGET_DIR/root/.ssh"' "$RO_POST" || {
     echo "FAIL: RO image no longer persists root authorized_keys" >&2
     exit 1
