@@ -126,8 +126,33 @@ grep -Fq 'NEXTGEN_BRINGUP_LOG' "$PROVISIONER" || {
     exit 1
 }
 
+for stage in \
+    'Checking production image...' \
+    'Checking flash layout...' \
+    'Programming system storage...' \
+    'Verifying system storage...' \
+    'Programming boot storage...' \
+    'Verifying boot storage...' \
+    'Programming U-Boot...' \
+    'Verifying U-Boot...' \
+    'Resetting boot environment...' \
+    'Programming bootloader...' \
+    'Verifying bootloader...' \
+    'Final verification...'
+do
+    grep -Fq "progress \"$stage\"" "$PROVISIONER" || {
+        echo "FAIL: bring-up provisioning stage missing: $stage" >&2
+        exit 1
+    }
+done
+grep -Fq 'log "stage: $stage"' "$PROVISIONER" || {
+    echo "FAIL: LCD provisioning stages are not mirrored to the SD run log" >&2
+    exit 1
+}
+
 echo "PASS: factory bring-up profile requires and arms a production bundle"
 echo "PASS: bring-up uses numbered persistent run logs on the SD data partition"
+echo "PASS: bring-up LCD reports actual provisioning operations and logs every stage"
 
 
 # RO-root ownership invariants used by engineering access and network identity.
