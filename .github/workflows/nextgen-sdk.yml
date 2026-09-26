@@ -1,0 +1,130 @@
+name: NextGen reusable Buildroot SDK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chatgpt/ro-root-image-slots
+    paths:
+      - .github/workflows/nextgen-sdk.yml
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  JOBS: 4
+
+jobs:
+  sdk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Buildroot host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git rsync cpio unzip wget file bc bison flex \
+            libncurses-dev libssl-dev python3 perl gawk texinfo
+
+      - uses: actions/cache@v4
+        with:
+          path: dl
+          key: nextgen-buildroot-dl-${{ github.sha }}
+          restore-keys: |
+            nextgen-buildroot-dl-
+
+      - name: Configure production ABI
+        run: |
+          mkdir -p logs
+          make O="$GITHUB_WORKSPACE/output-sdk" castle_nextgen_ro_dev_defconfig 2>&1 | tee logs/sdk-config.log
+
+      - name: Build compiler and Application target libraries
+        run: |
+          make O="$GITHUB_WORKSPACE/output-sdk" BR2_JLEVEL="$JOBS" \
+            toolchain libcurl alsa-lib libpng 2>&1 | tee logs/sdk-build.log
+
+      - name: Verify and package relocatable SDK without building world
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/output-sdk"
+          host="$out/host"
+          sysroot="$host/arm-buildroot-linux-gnueabihf/sysroot"
+          sdk_prefix="arm-buildroot-linux-gnueabihf_sdk-buildroot"
+          sdk_tar="$RUNNER_TEMP/nextgen-buildroot-sdk-${GITHUB_SHA}.tar.gz"
+
+          test -x "$host/bin/arm-buildroot-linux-gnueabihf-gcc"
+          test -r "$sysroot/usr/include/curl/curl.h"
+          test -r "$sysroot/usr/include/alsa/asoundlib.h"
+          test -r "$sysroot/usr/include/png.h"
+          find "$sysroot" -name 'libcurl.so*' -print -quit | grep -q .
+          find "$sysroot" -name 'libasound.so*' -print -quit | grep -q .
+          find "$sysroot" -name 'libpng16.so*' -print -quit | grep -q .
+
+          install -m 0755 support/misc/relocate-sdk.sh "$host/relocate-sdk.sh"
+          mkdir -p "$host/share/buildroot"
+          (
+            export LC_ALL=C
+            grep -lr "$host" "$host" | while read -r file; do
+              if file -b --mime-type "$file" | grep -q '^text/' &&
+                 [ "$file" != "$host/share/buildroot/sdk-location" ] &&
+                 [ "$file" != "$host/share/buildroot/sdk-relocs" ]; then
+                echo "$file"
+              fi
+            done
+          ) | sed -e "s|^$host|.|g" > "$host/share/buildroot/sdk-relocs"
+          printf '%s\n' "$host" > "$host/share/buildroot/sdk-location"
+
+          tar -C "$out" -czf "$sdk_tar" \
+            --owner=0 --group=0 --numeric-owner \
+            --transform="s#^host#$sdk_prefix#" host
+
+          mkdir -p sdk-release
+          cp "$sdk_tar" sdk-release/
+          cp "$out/.config" sdk-release/buildroot.config
+          printf '%s\n' "$GITHUB_SHA" > sdk-release/source-revision.txt
+          (cd sdk-release && sha256sum * > SHA256SUMS)
+
+          tmp="$RUNNER_TEMP/sdk-check"
+          mkdir -p "$tmp"
+          tar -xzf "$sdk_tar" -C "$tmp"
+          sdk="$tmp/$sdk_prefix"
+          "$sdk/relocate-sdk.sh"
+          "$sdk/bin/arm-buildroot-linux-gnueabihf-gcc" --version | tee logs/sdk-compiler.log
+          test -r "$sdk/arm-buildroot-linux-gnueabihf/sysroot/usr/include/curl/curl.h"
+          test -r "$sdk/arm-buildroot-linux-gnueabihf/sysroot/usr/include/alsa/asoundlib.h"
+          test -r "$sdk/arm-buildroot-linux-gnueabihf/sysroot/usr/include/png.h"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nextgen-sdk-logs-${{ github.sha }}
+          path: logs/
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextgen-buildroot-sdk-${{ github.sha }}
+          path: sdk-release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Publish reusable SDK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="nextgen-sdk-${GITHUB_SHA}"
+          asset="$(find sdk-release -maxdepth 1 -name 'nextgen-buildroot-sdk-*.tar.gz' -print -quit)"
+          gh release create "$tag" "$asset" \
+            --target "$GITHUB_SHA" \
+            --title "NextGen Buildroot SDK ${GITHUB_SHA}" \
+            --notes "Reusable ro-persist-v1 ARMHF compiler/sysroot. Built from the production Buildroot configuration without invoking the full world/image targets." \
+            --prerelease
