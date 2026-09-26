@@ -161,7 +161,11 @@ nextgen_buildroot_out()
     elif [ "$PROFILE" = "6.18-ro" ] || [ "$PROFILE" = "6.18-flash" ]; then
         printf '%s\n' "${NEXTGEN_SHARED_BUILDROOT_OUT:-$ROOT/output-nextgen-shared}"
     elif [ "$PROFILE" = "6.18-bringup" ]; then
-        printf '%s\n' "${NEXTGEN_BRINGUP_BUILDROOT_OUT:-$ROOT/output-nextgen-bringup}"
+        # Bring-up has the same package universe as production. Reuse the
+        # accumulated shared Buildroot world and vary only final rootfs policy,
+        # kernel/boot assets and image format. An explicit override remains
+        # available for diagnostics.
+        printf '%s\n' "${NEXTGEN_BRINGUP_BUILDROOT_OUT:-${NEXTGEN_SHARED_BUILDROOT_OUT:-$ROOT/output-nextgen-shared}}"
     elif [ "$PRODUCT_EXPLICIT" -eq 1 ]; then
         printf '%s\n' "$ROOT/output-nextgen-$product"
     else
