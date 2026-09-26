@@ -86,9 +86,10 @@ case "$PROFILE" in
         export NEXTGEN_AT91BOOTSTRAP NEXTGEN_UBOOT_IMAGE NEXTGEN_MKENVIMAGE NEXTGEN_UBOOT_ENV_TEXT
         ;;
     6.18-bringup)
-        # Factory/service image: SD boot and rootfs with framebuffer-console
-        # operator UI. It carries a separately-built production provision bundle
-        # but no measurement Application.
+        # Factory provisioning image: SD boot and rootfs with framebuffer-console
+        # operator UI. It carries the matching production provision bundle,
+        # programs/verifies the unit automatically, and contains no measurement
+        # Application.
         KERNEL_BUILD_DIR="$WORKSPACE/linux-6.18/build-fast-6.18-bringup"
         KERNEL_MODULES_ROOT=""
         EXPECTED_KERNEL_RELEASE="6.18.35-linux4microchip-2026.04.2+"
@@ -455,6 +456,7 @@ build_product()
     make -C "$ROOT" O="$out" "$BUILDROOT_DEFCONFIG"
 
     build_provision_bundle="${NEXTGEN_PROVISION_BUNDLE_DIR:-}"
+    build_arm_provisioning=""
     if [ "$PROFILE" = "6.18-bringup" ]; then
         if [ -z "$build_provision_bundle" ]; then
             artifact_root="${NEXTGEN_ARTIFACT_ROOT:-$ROOT/output-nextgen-artifacts}"
@@ -463,6 +465,16 @@ build_product()
                 build_provision_bundle="$candidate_bundle"
             fi
         fi
+        [ -n "$build_provision_bundle" ] || {
+            echo "error: bring-up profile requires a matching production provision bundle" >&2
+            echo "       build ./build-nextgen-image.sh 6.18-flash $product first" >&2
+            exit 1
+        }
+        # The normal bring-up profile is the one-step factory card: once a
+        # matching bundle has been selected, arm it deliberately for automatic
+        # provisioning. Runtime still requires nextgen.env=bringup, exact MTD
+        # geometry, product metadata and valid bundle hashes before any write.
+        build_arm_provisioning="YES-I-HAVE-HARDWARE-TESTED-NOR-UBI-BOOT"
         for sym in \
             BR2_PACKAGE_MTD \
             BR2_PACKAGE_MTD_MTD_DEBUG \
@@ -528,6 +540,10 @@ build_product()
         printf 'Diagnostic U-Boot:     %s\n' "$NEXTGEN_UBOOT_IMAGE"
         printf 'Diagnostic env:        %s\n' "$NEXTGEN_UBOOT_ENV_TEXT"
     fi
+    if [ "$PROFILE" = "6.18-bringup" ]; then
+        printf 'Provisioning:          ARMED (automatic factory profile)\n'
+        printf 'Provision bundle:      %s\n' "$build_provision_bundle"
+    fi
 
     NEXTGEN_PRODUCT="$product" \
     NEXTGEN_KERNEL_BUILD_DIR="$KERNEL_BUILD_DIR" \
@@ -537,6 +553,7 @@ build_product()
     NEXTGEN_STORAGE_SCHEMA="$STORAGE_SCHEMA" \
     NEXTGEN_STORAGE_BACKEND="$STORAGE_BACKEND" \
     NEXTGEN_PROVISION_BUNDLE_DIR="$build_provision_bundle" \
+    NEXTGEN_ARM_PROVISIONING="$build_arm_provisioning" \
         make -C "$ROOT" O="$out" "$@"
 
     if [ "$PROFILE" = "6.18-nand" ]; then
