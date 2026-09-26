@@ -150,6 +150,30 @@ grep -Fq 'log "stage: $stage"' "$PROVISIONER" || {
     exit 1
 }
 
+stage_before()
+{
+    stage="$1"
+    operation="$2"
+    stage_line="$(grep -nF -m1 "progress \"$stage\"" "$PROVISIONER" | cut -d: -f1)"
+    operation_line="$(grep -nF -m1 "$operation" "$PROVISIONER" | cut -d: -f1)"
+    [ -n "$stage_line" ] && [ -n "$operation_line" ] &&
+    [ "$stage_line" -lt "$operation_line" ] || {
+        echo "FAIL: provisioning stage is not ahead of its operation: $stage" >&2
+        exit 1
+    }
+}
+
+stage_before 'Programming system storage...' 'ubiformat "$rootdev" -y -f "$BUNDLE/rootfs.ubi"'
+stage_before 'Verifying system storage...' 'verify_rootfs_ubi "$rootdev" "$NEXTGEN_PRODUCT"'
+stage_before 'Programming boot storage...' 'ubiformat "$bootdev" -y -f "$BUNDLE/boot.ubi"'
+stage_before 'Verifying boot storage...' 'verify_boot_ubi "$bootdev"'
+stage_before 'Programming U-Boot...' 'flash_erase "$ubootdev" 0 0'
+stage_before 'Verifying U-Boot...' 'verify_readback "$ubootdev" 0'
+stage_before 'Resetting boot environment...' 'flash_erase "$envdev" 0 0'
+stage_before 'Programming bootloader...' 'flash_erase "$at91dev" 0 0'
+stage_before 'Verifying bootloader...' 'verify_readback "$at91dev" 0'
+stage_before 'Final verification...' '    sync'
+
 echo "PASS: factory bring-up profile requires and arms a production bundle"
 echo "PASS: bring-up uses numbered persistent run logs on the SD data partition"
 echo "PASS: bring-up LCD reports actual provisioning operations and logs every stage"
