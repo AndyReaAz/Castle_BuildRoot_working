@@ -7,7 +7,10 @@ WRAPPER="$ROOT/build-nextgen-image.sh"
 
 plan()
 {
-    NEXTGEN_PLAN_ONLY=1 "$WRAPPER" "$@"
+    env -u NEXTGEN_BUILDROOT_OUT \
+        -u NEXTGEN_SHARED_BUILDROOT_OUT \
+        -u NEXTGEN_BRINGUP_BUILDROOT_OUT \
+        NEXTGEN_PLAN_ONLY=1 "$WRAPPER" "$@"
 }
 
 ro_sound="$(plan 6.18-ro sound)"
