@@ -53,6 +53,17 @@ if [ -n "$BUNDLE_DIR" ]; then
         echo "error: provisioning bundle has no manifest: $BUNDLE_DIR" >&2
         exit 1
     }
+    [ -f "$BUNDLE_DIR/layout.env" ] || {
+        echo "error: provisioning bundle has no layout.env: $BUNDLE_DIR" >&2
+        exit 1
+    }
+    expected_product="${NEXTGEN_PRODUCT:-}"
+    if [ -n "$expected_product" ]; then
+        grep -qx "NEXTGEN_PRODUCT=$expected_product" "$BUNDLE_DIR/layout.env" || {
+            echo "error: provisioning bundle product does not match bring-up product $expected_product" >&2
+            exit 1
+        }
+    fi
     (
         cd "$BUNDLE_DIR"
         sha256sum -c manifest.sha256 >/dev/null
