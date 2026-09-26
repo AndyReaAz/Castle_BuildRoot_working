@@ -392,10 +392,17 @@ build_product()
 
     if [ -n "${NEXTGEN_BUILDROOT_OUT:-}" ]; then
         out="$NEXTGEN_BUILDROOT_OUT"
+    elif [ "$PROFILE" = "6.18-ro" ] || [ "$PROFILE" = "6.18-flash" ]; then
+        # Sound/vibration and SD/NAND use the same Buildroot package universe.
+        # Reuse one canonical O= tree and let the late NextGen hooks replace
+        # only product payloads, backend markers and final image containers.
+        # NEXTGEN_SHARED_BUILDROOT_OUT can point at an already-populated tree
+        # during transition (for example the proven output-nextgen-sound).
+        out="${NEXTGEN_SHARED_BUILDROOT_OUT:-$ROOT/output-nextgen-shared}"
     elif [ "$PROFILE" = "6.18-bringup" ]; then
-        out="$ROOT/output-nextgen-bringup-$product"
-    elif [ "$PROFILE" = "6.18-flash" ]; then
-        out="$ROOT/output-nextgen-flash-$product"
+        # Bring-up has a genuinely different package/rootfs policy, but it is
+        # not product-specific enough to justify duplicate sound/vibra worlds.
+        out="${NEXTGEN_BRINGUP_BUILDROOT_OUT:-$ROOT/output-nextgen-bringup}"
     elif [ "$PRODUCT_EXPLICIT" -eq 1 ]; then
         out="$ROOT/output-nextgen-$product"
     else
@@ -407,7 +414,8 @@ build_product()
 
     if [ "$PROFILE" = "6.18-bringup" ]; then
         if [ -z "${NEXTGEN_PROVISION_BUNDLE_DIR:-}" ]; then
-            candidate_bundle="$ROOT/output-nextgen-flash-$product/images/production-provision"
+            shared_out="${NEXTGEN_SHARED_BUILDROOT_OUT:-$ROOT/output-nextgen-shared}"
+            candidate_bundle="$shared_out/images/production-provision"
             if [ -d "$candidate_bundle" ]; then
                 NEXTGEN_PROVISION_BUNDLE_DIR="$candidate_bundle"
                 export NEXTGEN_PROVISION_BUNDLE_DIR
